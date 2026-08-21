@@ -163,17 +163,35 @@ impl LotPrecisionMatcher {
         }
     }
 
-    /// 从 step_size 计算小数位数
+    /// 从 step_size 快速计算小数位数 (基于纯算术与查表，零堆分配)
+    #[inline]
     pub fn get_precision_decimals(step_size: f64) -> usize {
-        if step_size <= 0.0 {
+        if step_size <= 0.0 || step_size >= 1.0 {
             return 0;
         }
-        let s = format!("{:.8}", step_size);
-        if let Some(dot_idx) = s.find('.') {
-            let decimal_part = s[dot_idx + 1..].trim_end_matches('0');
-            decimal_part.len()
+        if (step_size - 0.1).abs() < 1e-6 {
+            1
+        } else if (step_size - 0.01).abs() < 1e-6 {
+            2
+        } else if (step_size - 0.001).abs() < 1e-6 {
+            3
+        } else if (step_size - 0.0001).abs() < 1e-6 {
+            4
+        } else if (step_size - 0.00001).abs() < 1e-6 {
+            5
+        } else if (step_size - 0.000001).abs() < 1e-6 {
+            6
+        } else if (step_size - 0.0000001).abs() < 1e-6 {
+            7
+        } else if (step_size - 0.00000001).abs() < 1e-6 {
+            8
         } else {
-            0
+            let log = -step_size.log10();
+            if log.is_finite() && log > 0.0 {
+                (log.round() as usize).min(8)
+            } else {
+                0
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct HyperliquidClient {
     private_key: String,
+    signing_key: Option<k256::ecdsa::SigningKey>,
     wallet_address: String,
     base_url: String,
     is_mainnet: bool,
@@ -121,8 +122,23 @@ impl HyperliquidClient {
 
         let is_mainnet = !base_url.contains("testnet");
 
+        let signing_key = if !private_key.trim().is_empty() {
+            let clean_pk = private_key
+                .trim()
+                .trim_start_matches("0x")
+                .trim_start_matches("0X");
+            if let Ok(pk_bytes) = hex::decode(clean_pk) {
+                k256::ecdsa::SigningKey::from_bytes((&pk_bytes[..]).into()).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             private_key,
+            signing_key,
             wallet_address,
             base_url,
             is_mainnet,
@@ -131,10 +147,27 @@ impl HyperliquidClient {
     }
 
     fn timestamp_ms() -> u64 {
-        SystemTime::now()
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static LAST_NONCE: AtomicU64 = AtomicU64::new(0);
+
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() as u64
+            .as_millis() as u64;
+
+        let mut current = LAST_NONCE.load(Ordering::Relaxed);
+        loop {
+            let next = if now > current { now } else { current + 1 };
+            match LAST_NONCE.compare_exchange_weak(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return next,
+                Err(actual) => current = actual,
+            }
+        }
     }
 
     /// 获取所有交易对的 Meta 元信息 (universe 映射)
@@ -309,8 +342,11 @@ impl HyperliquidClient {
         };
 
         let nonce = Self::timestamp_ms();
-        let signature =
-            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?;
+        let signature = if let Some(ref sk) = self.signing_key {
+            HyperliquidSigner::sign_l1_action_fast(&action, nonce, sk, self.is_mainnet)?
+        } else {
+            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?
+        };
 
         let payload = ExchangeRequestPayload {
             action,
@@ -333,6 +369,16 @@ impl HyperliquidClient {
             .await
             .context("Failed to parse Hyperliquid order response")?;
 
+        if let Some(status) = res_json.get("status").and_then(|s| s.as_str()) {
+            if status == "err" {
+                let err_msg = res_json
+                    .get("response")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("Unknown Hyperliquid L1 order rejection");
+                anyhow::bail!("Hyperliquid order rejected: {}", err_msg);
+            }
+        }
+
         Ok(res_json)
     }
 
@@ -350,8 +396,11 @@ impl HyperliquidClient {
         };
 
         let nonce = Self::timestamp_ms();
-        let signature =
-            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?;
+        let signature = if let Some(ref sk) = self.signing_key {
+            HyperliquidSigner::sign_l1_action_fast(&action, nonce, sk, self.is_mainnet)?
+        } else {
+            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?
+        };
 
         let payload = ExchangeRequestPayload {
             action,
@@ -373,6 +422,16 @@ impl HyperliquidClient {
             .json()
             .await
             .context("Failed to parse Hyperliquid cancel response")?;
+
+        if let Some(status) = res_json.get("status").and_then(|s| s.as_str()) {
+            if status == "err" {
+                let err_msg = res_json
+                    .get("response")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("Unknown Hyperliquid L1 cancel rejection");
+                anyhow::bail!("Hyperliquid cancel rejected: {}", err_msg);
+            }
+        }
 
         Ok(res_json)
     }

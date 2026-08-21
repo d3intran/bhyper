@@ -23,10 +23,15 @@ tracked_symbols = [
 ]
 min_open_apr_pct = 30.0          # Minimum Net Spread APR to trigger trade (e.g. 30%)
 min_exit_apr_pct = 5.0           # Exit threshold when spread compresses (e.g. 5%)
-max_position_usd_per_pair = 50.0 # Max notional size per pair (optimized for $100 capital)
+max_position_usd_per_pair = 50.0 # Max notional size per pair (optimized for small capital)
+max_active_positions = 3         # Max concurrent active pairs to avoid margin fragmentation
+max_holding_hours = 8.0          # Max holding time (hours) before time-decay exit
+stop_loss_basis_bps = 40.0       # Max basis divergence loss allowed in bps (0.40%)
+take_profit_basis_bps = 20.0     # Basis convergence take-profit threshold in bps (0.20%)
 leverage = 2.0                   # Conservative leverage (2x ~ 3x)
 maker_taker_mode = true          # Post-only Maker on HL + Instant Taker on Binance
 max_slippage_bps = 15.0          # Max acceptable slippage in basis points (0.15%)
+auto_unwind_on_decay = true      # Automatically unwind position when spread compresses/inverts
 
 [risk]
 # Dynamic Risk Sentinel Configuration
@@ -34,6 +39,9 @@ max_delta_drift_pct = 5.0        # Max allowed delta imbalance before rebalancin
 min_margin_ratio_pct = 20.0      # Liquidation safety buffer threshold
 max_total_notional_usd = 200.0   # Max total portfolio notional across all active pairs
 auto_rebalance_delta = true      # Automatically balance orphan legs
+stop_loss_basis_bps = 40.0       # Hard basis loss stop-loss in bps
+max_holding_hours = 8.0          # Maximum duration limit (hours)
+min_exit_apr_pct = 5.0           # Minimum spread APR exit line
 
 [telegram]
 # Optional Telemetry & Remote Alerting

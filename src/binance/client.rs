@@ -1,19 +1,16 @@
 use crate::types::{Exchange, FundingRateInfo, PositionSide, SymbolPrecisionInfo};
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
-use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
-use sha2::Sha256;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[allow(dead_code)]
 pub struct BinanceFuturesClient {
     api_key: String,
     api_secret: String,
+    hmac_key: Option<ring::hmac::Key>,
     base_url: String,
     http_client: reqwest::Client,
 }
@@ -87,24 +84,38 @@ impl BinanceFuturesClient {
         } else {
             base_url
         };
+
+        let hmac_key = if !api_secret.trim().is_empty() {
+            Some(ring::hmac::Key::new(
+                ring::hmac::HMAC_SHA256,
+                api_secret.as_bytes(),
+            ))
+        } else {
+            None
+        };
+
         Self {
             api_key,
             api_secret,
+            hmac_key,
             base_url,
             http_client,
         }
     }
 
+    #[inline]
     fn sign_query(&self, query: &str) -> String {
-        if self.api_secret.is_empty() {
-            return query.to_string();
+        if let Some(ref key) = self.hmac_key {
+            let sig = ring::hmac::sign(key, query.as_bytes());
+            let hex_sig = hex::encode(sig.as_ref());
+            let mut out = String::with_capacity(query.len() + 11 + hex_sig.len());
+            out.push_str(query);
+            out.push_str("&signature=");
+            out.push_str(&hex_sig);
+            out
+        } else {
+            query.to_string()
         }
-        let mut mac = HmacSha256::new_from_slice(self.api_secret.as_bytes())
-            .expect("HMAC can take key of any size");
-        mac.update(query.as_bytes());
-        let result = mac.finalize();
-        let sig = hex::encode(result.into_bytes());
-        format!("{}&signature={}", query, sig)
     }
 
     fn timestamp_ms() -> u64 {
@@ -319,6 +330,16 @@ impl BinanceFuturesClient {
             .json()
             .await
             .context("Failed to parse Binance order response JSON")?;
+
+        if let Some(code) = json_val.get("code").and_then(|c| c.as_i64()) {
+            if code != 0 && code != 200 {
+                let msg = json_val
+                    .get("msg")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown Binance error");
+                anyhow::bail!("Binance order rejected (code {}): {}", code, msg);
+            }
+        }
 
         Ok(json_val)
     }

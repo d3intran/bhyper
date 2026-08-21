@@ -77,12 +77,22 @@ pub struct StrategyConfig {
     pub min_exit_apr_pct: f64,
     #[serde(default = "default_max_pos_usd")]
     pub max_position_usd_per_pair: f64,
+    #[serde(default = "default_max_active_positions")]
+    pub max_active_positions: usize,
+    #[serde(default = "default_max_holding_hours")]
+    pub max_holding_hours: f64,
+    #[serde(default = "default_stop_loss_basis_bps")]
+    pub stop_loss_basis_bps: f64,
+    #[serde(default = "default_take_profit_basis_bps")]
+    pub take_profit_basis_bps: f64,
     #[serde(default = "default_leverage")]
     pub leverage: f64,
     #[serde(default = "default_true")]
     pub maker_taker_mode: bool,
     #[serde(default = "default_slippage_bps")]
     pub max_slippage_bps: f64,
+    #[serde(default = "default_true")]
+    pub auto_unwind_on_decay: bool,
 }
 
 fn default_symbols() -> Vec<String> {
@@ -114,6 +124,18 @@ fn default_exit_apr() -> f64 {
 fn default_max_pos_usd() -> f64 {
     500.0
 }
+fn default_max_active_positions() -> usize {
+    3
+}
+fn default_max_holding_hours() -> f64 {
+    8.0
+}
+fn default_stop_loss_basis_bps() -> f64 {
+    40.0
+}
+fn default_take_profit_basis_bps() -> f64 {
+    20.0
+}
 fn default_leverage() -> f64 {
     2.0
 }
@@ -131,9 +153,14 @@ impl Default for StrategyConfig {
             min_open_apr_pct: default_min_apr(),
             min_exit_apr_pct: default_exit_apr(),
             max_position_usd_per_pair: default_max_pos_usd(),
+            max_active_positions: default_max_active_positions(),
+            max_holding_hours: default_max_holding_hours(),
+            stop_loss_basis_bps: default_stop_loss_basis_bps(),
+            take_profit_basis_bps: default_take_profit_basis_bps(),
             leverage: default_leverage(),
             maker_taker_mode: default_true(),
             max_slippage_bps: default_slippage_bps(),
+            auto_unwind_on_decay: default_true(),
         }
     }
 }
@@ -148,6 +175,12 @@ pub struct RiskConfig {
     pub max_total_notional_usd: f64,
     #[serde(default = "default_true")]
     pub auto_rebalance_delta: bool,
+    #[serde(default = "default_stop_loss_basis_bps")]
+    pub stop_loss_basis_bps: f64,
+    #[serde(default = "default_max_holding_hours")]
+    pub max_holding_hours: f64,
+    #[serde(default = "default_exit_apr")]
+    pub min_exit_apr_pct: f64,
 }
 
 fn default_max_delta_pct() -> f64 {
@@ -167,6 +200,9 @@ impl Default for RiskConfig {
             min_margin_ratio_pct: default_min_margin_ratio(),
             max_total_notional_usd: default_max_total_notional(),
             auto_rebalance_delta: default_true(),
+            stop_loss_basis_bps: default_stop_loss_basis_bps(),
+            max_holding_hours: default_max_holding_hours(),
+            min_exit_apr_pct: default_exit_apr(),
         }
     }
 }

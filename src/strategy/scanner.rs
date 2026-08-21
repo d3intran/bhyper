@@ -4,6 +4,7 @@ use crate::types::{ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo};
 use crate::ws::MarketDataCache;
 use anyhow::Result;
 use chrono::{Timelike, Utc};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub struct ArbitrageScanner {
@@ -45,10 +46,10 @@ impl ArbitrageScanner {
         let mut bn_precisions = bn_prec_res?;
         let hl_meta = hl_meta_res?;
 
-        let mut shared_precisions = HashMap::new();
+        let mut shared_precisions = HashMap::with_capacity(hl_meta.universe.len());
 
         for (idx, u) in hl_meta.universe.into_iter().enumerate() {
-            let symbol = u.name.to_uppercase();
+            let symbol = u.name.to_ascii_uppercase();
             if let Some(bn_info) = bn_precisions.get_mut(&symbol) {
                 bn_info.hyperliquid_sz_decimals = u.sz_decimals;
                 bn_info.hyperliquid_asset_index = idx as u32;
@@ -80,9 +81,9 @@ impl ArbitrageScanner {
         let bn_rates = bn_res?;
         let hl_rates = hl_res?;
 
-        let mut bn_map = HashMap::with_capacity(bn_rates.len());
+        let mut bn_map = FxHashMap::with_capacity_and_hasher(bn_rates.len(), Default::default());
         for item in bn_rates {
-            bn_map.insert(item.symbol.to_uppercase(), item);
+            bn_map.insert(item.symbol.to_ascii_uppercase(), item);
         }
 
         let now = Utc::now();
@@ -91,10 +92,10 @@ impl ArbitrageScanner {
         let is_bn_settlement_next = (minute >= 50 && (hour == 7 || hour == 15 || hour == 23))
             || (minute <= 10 && (hour == 8 || hour == 16 || hour == 0));
 
-        let mut opportunities = Vec::new();
+        let mut opportunities = Vec::with_capacity(hl_rates.len());
 
         for hl_item in hl_rates {
-            let symbol = hl_item.symbol.to_uppercase();
+            let symbol = hl_item.symbol.to_ascii_uppercase();
             if let Some(bn_item) = bn_map.get(&symbol) {
                 if bn_item.mark_price <= 0.0 || hl_item.mark_price <= 0.0 {
                     continue;
@@ -167,12 +168,9 @@ impl ArbitrageScanner {
             }
         }
 
-        // Sort descending by net spread APR
-        opportunities.sort_by(|a, b| {
-            b.net_spread_apr_pct
-                .partial_cmp(&a.net_spread_apr_pct)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        // Sort descending by net spread APR using total_cmp (zero allocation)
+        opportunities
+            .sort_unstable_by(|a, b| b.net_spread_apr_pct.total_cmp(&a.net_spread_apr_pct));
 
         Ok(opportunities)
     }

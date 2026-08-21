@@ -14,6 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
+use crate::ws::MarketDataCache;
+
 pub struct TwoLegExecutor {
     binance: BinanceFuturesClient,
     hyperliquid: HyperliquidClient,
@@ -21,6 +23,7 @@ pub struct TwoLegExecutor {
     state_store: Arc<Mutex<StateStore>>,
     dry_run: bool,
     execution_mode: ExecutionMode,
+    cache: Option<MarketDataCache>,
 }
 
 impl TwoLegExecutor {
@@ -39,7 +42,13 @@ impl TwoLegExecutor {
             state_store,
             dry_run,
             execution_mode,
+            cache: None,
         }
+    }
+
+    pub fn with_cache(mut self, cache: MarketDataCache) -> Self {
+        self.cache = Some(cache);
+        self
     }
 
     /// 解析 Hyperliquid 下单返回的成交状态与实际成交量
@@ -198,7 +207,8 @@ impl TwoLegExecutor {
                     .await
                     .context("Failed to dispatch Leg 1 HL IOC order")?;
 
-                let (is_filled, filled_sz, actual_px, _) = Self::parse_hyperliquid_order_fill(&hl_res);
+                let (is_filled, filled_sz, actual_px, _) =
+                    Self::parse_hyperliquid_order_fill(&hl_res);
                 if !is_filled || filled_sz <= 0.0 {
                     warn!(
                         "❌ Hyperliquid Leg 1 IOC Order Unfilled or Rejected: {}. Aborting Leg 2 hedge safely (Zero Delta Risk)!",
@@ -207,7 +217,10 @@ impl TwoLegExecutor {
                     bail!("Leg 1 HL IOC was not filled: {}", hl_res);
                 }
 
-                (filled_sz, if actual_px > 0.0 { actual_px } else { hl_price })
+                (
+                    filled_sz,
+                    if actual_px > 0.0 { actual_px } else { hl_price },
+                )
             }
 
             ExecutionMode::MakerTaker => {
@@ -235,34 +248,78 @@ impl TwoLegExecutor {
                     Self::parse_hyperliquid_order_fill(&hl_res);
 
                 if is_filled_now && filled_sz_now > 0.0 {
-                    (filled_sz_now, if actual_px_now > 0.0 { actual_px_now } else { hl_price })
+                    (
+                        filled_sz_now,
+                        if actual_px_now > 0.0 {
+                            actual_px_now
+                        } else {
+                            hl_price
+                        },
+                    )
                 } else if let Some(oid) = resting_oid {
-                    info!("⏳ HL Maker order resting on book (OID: {}). Polling for fills (Max 5s timeout)...", oid);
+                    info!("⏳ HL Maker order resting on book (OID: {}). Awaiting instant WebSocket fill event (5s max timeout)...", oid);
                     let mut confirmed_fill_qty = 0.0;
-                    let mut poll_count = 0;
+                    let mut actual_px = hl_price;
 
-                    while poll_count < 20 {
-                        tokio::time::sleep(Duration::from_millis(250)).await;
-                        poll_count += 1;
+                    if let Some(ref cache) = self.cache {
+                        let mut fill_rx = cache.subscribe_fills();
+                        let timeout = tokio::time::sleep(Duration::from_millis(5000));
+                        tokio::pin!(timeout);
 
-                        if let Ok(open_orders) = self.hyperliquid.fetch_open_orders().await {
-                            let is_still_open = open_orders.iter().any(|o| o.oid == oid);
-                            if !is_still_open {
-                                // Order is no longer open -> filled!
-                                confirmed_fill_qty = aligned.qty;
-                                info!("✅ HL Maker order filled! (OID: {})", oid);
-                                break;
+                        loop {
+                            tokio::select! {
+                                _ = &mut timeout => {
+                                    warn!("⏱️ HL Maker order (OID: {}) timed out waiting for WS fill.", oid);
+                                    break;
+                                }
+                                fill_res = fill_rx.recv() => {
+                                    match fill_res {
+                                        Ok(fill) => {
+                                            if (fill.oid == oid || fill.coin.eq_ignore_ascii_case(&opp.symbol)) && fill.sz > 0.0 {
+                                                confirmed_fill_qty = fill.sz;
+                                                if fill.px > 0.0 {
+                                                    actual_px = fill.px;
+                                                }
+                                                info!("⚡ INSTANT WS Fill Event Received for {} (OID: {}): {:.4} @ ${:.4}", opp.symbol, oid, fill.sz, fill.px);
+                                                break;
+                                            }
+                                        }
+                                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Fallback polling if cache not provided
+                        let mut poll_count = 0;
+                        while poll_count < 20 {
+                            tokio::time::sleep(Duration::from_millis(250)).await;
+                            poll_count += 1;
+                            if let Ok(open_orders) = self.hyperliquid.fetch_open_orders().await {
+                                let is_still_open = open_orders.iter().any(|o| o.oid == oid);
+                                if !is_still_open {
+                                    confirmed_fill_qty = aligned.qty;
+                                    info!("✅ HL Maker order filled! (OID: {})", oid);
+                                    break;
+                                }
                             }
                         }
                     }
 
                     if confirmed_fill_qty <= 0.0 {
-                        warn!("⏱️ HL Maker order not filled within timeout. Cancelling order {}...", oid);
-                        let _ = self.hyperliquid.cancel_order(precision.hyperliquid_asset_index, oid).await;
+                        warn!(
+                            "⏱️ HL Maker order not filled within timeout. Cancelling order {}...",
+                            oid
+                        );
+                        let _ = self
+                            .hyperliquid
+                            .cancel_order(precision.hyperliquid_asset_index, oid)
+                            .await;
                         bail!("HL Maker order {} timed out and was cancelled safely. No Binance position opened.", oid);
                     }
 
-                    (confirmed_fill_qty, hl_price)
+                    (confirmed_fill_qty, actual_px)
                 } else {
                     bail!("HL Post-Only rejected immediately: {}", hl_res);
                 }
@@ -398,41 +455,82 @@ impl TwoLegExecutor {
         }
     }
 
-    /// 双腿平仓 (Unwind Arbitrage Position)
+    /// 双腿平仓 (Unwind Arbitrage Position with exact reason and PnL calculation)
     pub async fn execute_close(
         &self,
         position: &ActiveArbitragePosition,
         precision: &SymbolPrecisionInfo,
+        close_reason: &str,
     ) -> Result<()> {
+        let (live_bn_px, live_hl_px) = if let Some(ref cache) = self.cache {
+            cache.get_latest_prices(&position.symbol).unwrap_or((
+                position.binance_entry_price,
+                position.hyperliquid_entry_price,
+            ))
+        } else {
+            (
+                position.binance_entry_price,
+                position.hyperliquid_entry_price,
+            )
+        };
+
+        let hl_pnl = match position.hyperliquid_side {
+            PositionSide::Short => {
+                (position.hyperliquid_entry_price - live_hl_px) * position.hyperliquid_qty
+            }
+            PositionSide::Long => {
+                (live_hl_px - position.hyperliquid_entry_price) * position.hyperliquid_qty
+            }
+        };
+        let bn_pnl = match position.binance_side {
+            PositionSide::Short => {
+                (position.binance_entry_price - live_bn_px) * position.binance_qty
+            }
+            PositionSide::Long => {
+                (live_bn_px - position.binance_entry_price) * position.binance_qty
+            }
+        };
+        let basis_pnl = hl_pnl + bn_pnl;
+        let total_pnl = basis_pnl + position.accumulated_funding_usd;
+
+        let holding_duration_mins = (Utc::now() - position.opened_at).num_minutes();
+
         if self.dry_run {
             info!(
-                "🧪 [DRY-RUN / PAPER TRADING] Simulated close of position on {}",
-                position.symbol
+                "🧪 [DRY-RUN / PAPER TRADING] Simulated close of position on {} (Reason: {}, Est PnL: ${:.4})",
+                position.symbol, close_reason, total_pnl
             );
             {
                 let mut store = self.state_store.lock();
                 let _ = store.close_position(
                     &position.symbol,
-                    position.binance_entry_price,
-                    position.hyperliquid_entry_price,
-                    0.0,
-                    "Paper trading close",
+                    live_bn_px,
+                    live_hl_px,
+                    total_pnl,
+                    close_reason,
                 );
             }
             let alert = format!(
                 "🧪 <b>[模拟盘平仓完成] BHyper Paper Trading</b>\n\n\
                 • <b>标的:</b> <code>{}</code>\n\
-                • <b>持仓规模:</b> <code>${:.2}</code>\n\
+                • <b>规模:</b> <code>${:.2}</code>\n\
+                • <b>持仓时间:</b> <code>{} mins</code>\n\
+                • <b>平仓原因:</b> <code>{}</code>\n\
+                • <b>模拟实现盈亏:</b> <code>${:.4}</code>\n\
                 • <b>状态:</b> 双边对冲仓位已模拟平仓并落盘。",
-                position.symbol, position.nominal_value_usd
+                position.symbol,
+                position.nominal_value_usd,
+                holding_duration_mins,
+                close_reason,
+                total_pnl
             );
             let _ = self.notifier.send_alert(&alert).await;
             return Ok(());
         }
 
         info!(
-            "⚡ [LIVE] Unwinding arbitrage pair on {}...",
-            position.symbol
+            "⚡ [LIVE] Unwinding arbitrage pair on {} (Reason: {})...",
+            position.symbol, close_reason
         );
 
         // Close Binance
@@ -471,19 +569,29 @@ impl TwoLegExecutor {
             let mut store = self.state_store.lock();
             let _ = store.close_position(
                 &position.symbol,
-                position.binance_entry_price,
-                position.hyperliquid_entry_price,
-                0.0,
-                "Live position closed",
+                live_bn_px,
+                live_hl_px,
+                total_pnl,
+                close_reason,
             );
         }
 
         let alert = format!(
             "🔔 <b>[套利平仓完成] BHyper Position Closed</b>\n\n\
             • <b>标的:</b> <code>{}</code>\n\
-            • <b>规模:</b> <code>${:.2}</code>\n\
-            • <b>状态:</b> 双边合约已全部平仓完毕并更新本地状态。",
-            position.symbol, position.nominal_value_usd
+            • <b>名义规模:</b> <code>${:.2}</code>\n\
+            • <b>持仓时间:</b> <code>{} mins</code>\n\
+            • <b>平仓原因:</b> <code>{}</code>\n\
+            • <b>基差 PnL:</b> <code>${:.4}</code>\n\
+            • <b>累计已收资金费:</b> <code>${:.4}</code>\n\
+            • <b>实现总净利润:</b> <code>${:.4}</code>",
+            position.symbol,
+            position.nominal_value_usd,
+            holding_duration_mins,
+            close_reason,
+            basis_pnl,
+            position.accumulated_funding_usd,
+            total_pnl
         );
         let _ = self.notifier.send_alert(&alert).await;
 

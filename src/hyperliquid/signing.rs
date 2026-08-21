@@ -61,6 +61,11 @@ pub struct ExchangeRequestPayload {
     pub vault_address: Option<String>,
 }
 
+use std::sync::OnceLock;
+
+static MAINNET_DOMAIN: OnceLock<[u8; 32]> = OnceLock::new();
+static TESTNET_DOMAIN: OnceLock<[u8; 32]> = OnceLock::new();
+
 pub struct HyperliquidSigner;
 
 impl HyperliquidSigner {
@@ -91,6 +96,7 @@ impl HyperliquidSigner {
     }
 
     /// 对 L1 Action 进行 MessagePack 编码并计算 connectionId
+    #[inline]
     pub fn compute_connection_id(action: &ExchangeAction, nonce: u64) -> Result<[u8; 32]> {
         let mut msgpack_bytes =
             rmp_serde::to_vec_named(action).context("Failed to serialize action to msgpack")?;
@@ -104,24 +110,18 @@ impl HyperliquidSigner {
         Ok(out)
     }
 
-    /// 构建 EIP-712 Phantom Agent 消息哈希并签名
-    pub fn sign_l1_action(
+    /// 高频热路径: 直接使用预编译 SigningKey 和预热 Domain Separator 签名 (零密钥反序列化开销)
+    pub fn sign_l1_action_fast(
         action: &ExchangeAction,
         nonce: u64,
-        private_key_hex: &str,
+        signing_key: &SigningKey,
         is_mainnet: bool,
     ) -> Result<SignaturePayload> {
-        let clean_pk = private_key_hex
-            .trim()
-            .trim_start_matches("0x")
-            .trim_start_matches("0X");
-        let pk_bytes = hex::decode(clean_pk).context("Invalid hex private key")?;
-
-        let signing_key =
-            SigningKey::from_bytes((&pk_bytes[..]).into()).context("Invalid secp256k1 key")?;
-
-        let chain_id = if is_mainnet { 1337 } else { 421614 };
-        let domain_separator = Self::compute_domain_separator(chain_id);
+        let domain_separator = if is_mainnet {
+            *MAINNET_DOMAIN.get_or_init(|| Self::compute_domain_separator(1337))
+        } else {
+            *TESTNET_DOMAIN.get_or_init(|| Self::compute_domain_separator(421614))
+        };
 
         let connection_id = Self::compute_connection_id(action, nonce)?;
 
@@ -152,11 +152,34 @@ impl HyperliquidSigner {
         let s_bytes = &sig.to_bytes()[32..64];
         let v_val = 27 + recid.to_byte();
 
-        Ok(SignaturePayload {
-            r: format!("0x{}", hex::encode(r_bytes)),
-            s: format!("0x{}", hex::encode(s_bytes)),
-            v: v_val,
-        })
+        let mut r = String::with_capacity(66);
+        r.push_str("0x");
+        r.push_str(&hex::encode(r_bytes));
+
+        let mut s = String::with_capacity(66);
+        s.push_str("0x");
+        s.push_str(&hex::encode(s_bytes));
+
+        Ok(SignaturePayload { r, s, v: v_val })
+    }
+
+    /// 构建 EIP-712 Phantom Agent 消息哈希并签名
+    pub fn sign_l1_action(
+        action: &ExchangeAction,
+        nonce: u64,
+        private_key_hex: &str,
+        is_mainnet: bool,
+    ) -> Result<SignaturePayload> {
+        let clean_pk = private_key_hex
+            .trim()
+            .trim_start_matches("0x")
+            .trim_start_matches("0X");
+        let pk_bytes = hex::decode(clean_pk).context("Invalid hex private key")?;
+
+        let signing_key =
+            SigningKey::from_bytes((&pk_bytes[..]).into()).context("Invalid secp256k1 key")?;
+
+        Self::sign_l1_action_fast(action, nonce, &signing_key, is_mainnet)
     }
 }
 

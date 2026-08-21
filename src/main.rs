@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 use config::Config;
 use hyperliquid::HyperliquidClient;
 use parking_lot::Mutex;
+use risk::{ExitSignal, RiskSentinel};
 use state::StateStore;
 use std::sync::Arc;
 use strategy::{ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TwoLegExecutor};
@@ -172,8 +173,9 @@ async fn main() -> Result<()> {
                 config.hyperliquid.wallet_address.clone(),
                 config.hyperliquid.base_url.clone(),
             );
-            let scanner = ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
-                .with_cache(cache.clone());
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
+                    .with_cache(cache.clone());
 
             let mut timer = tokio::time::interval(std::time::Duration::from_secs(2));
             println!("🚀 Live Market Dashboard Running. Press Ctrl+C to stop.\n");
@@ -182,7 +184,15 @@ async fn main() -> Result<()> {
                 timer.tick().await;
                 if let Ok(opps) = scanner.scan_opportunities().await {
                     print!("{esc}[2J{esc}[1;1H", esc = 27 as char); // clear terminal
-                    println!("⚡ [LIVE WS STREAM] {} | Health: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"), if cache.is_healthy() { "🟢 HEALTHY" } else { "🟡 SYNCING" });
+                    println!(
+                        "⚡ [LIVE WS STREAM] {} | Health: {}",
+                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
+                        if cache.is_healthy() {
+                            "🟢 HEALTHY"
+                        } else {
+                            "🟡 SYNCING"
+                        }
+                    );
                     TelemetryNotifier::render_console_table(&opps, limit);
                 }
             }
@@ -529,6 +539,23 @@ async fn main() -> Result<()> {
 
             info!("Execution mode set to: {}", execution_mode);
 
+            // 1. Initialize real-time WebSocket market cache & telemetry
+            let cache = MarketDataCache::new();
+            BinanceWsStream::spawn(cache.clone());
+            let hl_ws_url = if config.hyperliquid.is_testnet {
+                Some("wss://api.hyperliquid-testnet.xyz/ws".to_string())
+            } else {
+                Some("wss://api.hyperliquid.xyz/ws".to_string())
+            };
+            HyperliquidWsStream::spawn(
+                cache.clone(),
+                hl_ws_url,
+                Some(config.hyperliquid.wallet_address.clone()),
+            );
+
+            info!("⏳ Warming up WebSocket feeds (2s)...");
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
             let bn_client = BinanceFuturesClient::new(
                 config.binance.api_key.clone(),
                 config.binance.api_secret.clone(),
@@ -541,7 +568,8 @@ async fn main() -> Result<()> {
             );
             let notifier = TelemetryNotifier::new(config.telegram.clone());
             let scanner =
-                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
+                    .with_cache(cache.clone());
 
             let executor = TwoLegExecutor::new(
                 BinanceFuturesClient::new(
@@ -558,7 +586,8 @@ async fn main() -> Result<()> {
                 state_store.clone(),
                 actual_dry_run,
                 execution_mode,
-            );
+            )
+            .with_cache(cache.clone());
 
             let trigger_engine = ProfitTriggerEngine::new(
                 config.strategy.min_open_apr_pct / 8760.0 * 100.0,
@@ -566,14 +595,17 @@ async fn main() -> Result<()> {
                 config.strategy.maker_taker_mode,
             );
 
+            let risk_sentinel = RiskSentinel::new(config.risk.clone());
+
             info!(
-                "Starting BHyper Automated Arbitrage Engine (Interval: {}s, Max Margin: ${:.2})...",
-                interval_secs, margin_usd
+                "🚀 BHyper Automated Engine Running (Interval: {}s, Max Pair Margin: ${:.2}, Max Positions: {})...",
+                interval_secs, margin_usd, config.strategy.max_active_positions
             );
 
             let mut timer = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
             loop {
                 timer.tick().await;
+
                 let (opps_res, precisions_res) = tokio::join!(
                     scanner.scan_opportunities(),
                     scanner.fetch_symbol_precisions()
@@ -582,14 +614,105 @@ async fn main() -> Result<()> {
                 let opps = match opps_res {
                     Ok(o) => o,
                     Err(e) => {
-                        tracing::error!("Error scanning: {:?}", e);
+                        tracing::error!("Error scanning opportunities: {:?}", e);
                         continue;
                     }
                 };
 
                 let precisions = precisions_res.unwrap_or_default();
+                let opps_map: std::collections::HashMap<String, &types::ArbitrageOpportunity> =
+                    opps.iter().map(|o| (o.symbol.clone(), o)).collect();
 
-                for opp in opps.iter().take(5) {
+                // =========================================================================
+                // PHASE 1: ACTIVE POSITION AUDIT & AUTOMATED EXIT / SPREAD DECAY LIFECYCLE
+                // =========================================================================
+                let active_positions = {
+                    let store = state_store.lock();
+                    store.get_active_positions()
+                };
+
+                for mut pos in active_positions {
+                    let prec = match precisions.get(&pos.symbol) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+
+                    let (live_bn_px, live_hl_px) = cache
+                        .get_latest_prices(&pos.symbol)
+                        .unwrap_or((pos.binance_entry_price, pos.hyperliquid_entry_price));
+
+                    let current_opp = opps_map.get(&pos.symbol).copied();
+
+                    // Update live spread APR and Delta in store
+                    if let Some(opp) = current_opp {
+                        let eff_spread = match pos.hyperliquid_side {
+                            types::PositionSide::Short => {
+                                opp.hyperliquid_apr_pct - opp.binance_apr_pct
+                            }
+                            types::PositionSide::Long => {
+                                opp.binance_apr_pct - opp.hyperliquid_apr_pct
+                            }
+                        };
+                        pos.current_spread_apr = eff_spread;
+                        pos.last_updated_at = chrono::Utc::now();
+                        let _ = state_store.lock().upsert_position(pos.clone());
+                    }
+
+                    if config.strategy.auto_unwind_on_decay {
+                        let exit_signal = risk_sentinel.evaluate_position_exit(
+                            &pos,
+                            current_opp,
+                            live_bn_px,
+                            live_hl_px,
+                        );
+
+                        match exit_signal {
+                            ExitSignal::Hold => {}
+                            ExitSignal::SpreadDecay { reason, .. }
+                            | ExitSignal::SpreadInverted { reason, .. }
+                            | ExitSignal::BasisStopLoss { reason, .. }
+                            | ExitSignal::BasisTakeProfit { reason, .. }
+                            | ExitSignal::MaxDurationExceeded { reason, .. }
+                            | ExitSignal::DeltaDriftCritical { reason, .. } => {
+                                warn!("🚨 AUTOMATIC EXIT TRIGGERED for {}: {}", pos.symbol, reason);
+                                if let Err(e) = executor.execute_close(&pos, prec, &reason).await {
+                                    tracing::error!(
+                                        "Failed to auto-close position for {}: {:?}",
+                                        pos.symbol,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // =========================================================================
+                // PHASE 2: CAPACITY CHECK & NEW ARBITRAGE OPPORTUNITY EVALUATION
+                // =========================================================================
+                let current_active_count = {
+                    let store = state_store.lock();
+                    store.get_active_positions().len()
+                };
+
+                if current_active_count >= config.strategy.max_active_positions {
+                    continue;
+                }
+
+                let held_symbols: std::collections::HashSet<String> = {
+                    let store = state_store.lock();
+                    store
+                        .get_active_positions()
+                        .into_iter()
+                        .map(|p| p.symbol)
+                        .collect()
+                };
+
+                for opp in opps.iter().take(10) {
+                    if held_symbols.contains(&opp.symbol) {
+                        continue; // Already holding this symbol
+                    }
+
                     let prec = match precisions.get(&opp.symbol) {
                         Some(p) => p,
                         None => continue,
@@ -598,19 +721,19 @@ async fn main() -> Result<()> {
                     let decision = trigger_engine.evaluate_opportunity(
                         opp,
                         margin_usd,
-                        false, // strictly enforce sniper window in automated trading!
+                        false, // strictly enforce timing sniper window in automated mode!
                         Some(prec),
                     );
 
                     if decision.should_open {
                         info!(
-                            "🎯 PROFIT TRIGGER FIRED for {}! Executing two-leg arbitrage...",
-                            opp.symbol
+                            "🎯 PROFIT TRIGGER FIRED for {}! Executing two-leg arbitrage (Mode: {})...",
+                            opp.symbol, execution_mode
                         );
                         match executor.execute_open(opp, &decision, prec).await {
                             Ok(pos) => {
                                 info!(
-                                    "Successfully established arbitrage position on {}",
+                                    "✅ Successfully established arbitrage position on {}",
                                     pos.symbol
                                 );
                                 break;
@@ -657,24 +780,26 @@ async fn main() -> Result<()> {
             // Retrieve from state store if available
             let (target_pos, default_prec) = {
                 let store = state_store.lock();
-                let pos = store.get_position(&symbol).cloned().unwrap_or_else(|| types::ActiveArbitragePosition {
-                    symbol: symbol.clone(),
-                    binance_side: types::PositionSide::Long,
-                    binance_qty: 0.0,
-                    binance_entry_price: 0.0,
-                    hyperliquid_side: types::PositionSide::Short,
-                    hyperliquid_qty: 0.0,
-                    hyperliquid_entry_price: 0.0,
-                    nominal_value_usd: 0.0,
-                    net_delta_usd: 0.0,
-                    entry_spread_apr: 0.0,
-                    current_spread_apr: 0.0,
-                    accumulated_funding_usd: 0.0,
-                    opened_at: chrono::Utc::now(),
-                    last_updated_at: chrono::Utc::now(),
-                    is_closed: false,
-                    closed_at: None,
-                    realized_pnl_usd: None,
+                let pos = store.get_position(&symbol).cloned().unwrap_or_else(|| {
+                    types::ActiveArbitragePosition {
+                        symbol: symbol.clone(),
+                        binance_side: types::PositionSide::Long,
+                        binance_qty: 0.0,
+                        binance_entry_price: 0.0,
+                        hyperliquid_side: types::PositionSide::Short,
+                        hyperliquid_qty: 0.0,
+                        hyperliquid_entry_price: 0.0,
+                        nominal_value_usd: 0.0,
+                        net_delta_usd: 0.0,
+                        entry_spread_apr: 0.0,
+                        current_spread_apr: 0.0,
+                        accumulated_funding_usd: 0.0,
+                        opened_at: chrono::Utc::now(),
+                        last_updated_at: chrono::Utc::now(),
+                        is_closed: false,
+                        closed_at: None,
+                        realized_pnl_usd: None,
+                    }
                 });
 
                 let prec = types::SymbolPrecisionInfo {
@@ -691,7 +816,9 @@ async fn main() -> Result<()> {
                 (pos, prec)
             };
 
-            let _ = executor.execute_close(&target_pos, &default_prec).await;
+            let _ = executor
+                .execute_close(&target_pos, &default_prec, "Emergency manual unwind")
+                .await;
             println!("✅ Unwind command dispatched and recorded for {}.", symbol);
         }
 

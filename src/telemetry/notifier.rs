@@ -150,7 +150,13 @@ impl TelemetryNotifier {
         } else {
             println!(
                 "{:<8} {:<12} {:<12} {:<12} {:<12} {:<12} {:<20}",
-                "Symbol", "Notional", "HL Side/Qty", "BN Side/Qty", "Entry APR", "Current APR", "Opened At"
+                "Symbol",
+                "Notional",
+                "HL Side/Qty",
+                "BN Side/Qty",
+                "Entry APR",
+                "Current APR",
+                "Opened At"
             );
             println!("{}", "-".repeat(110));
             for p in positions {
@@ -176,13 +182,26 @@ impl TelemetryNotifier {
         println!("\n{}", "=".repeat(90));
         println!("🔍 BHyper Cross-Exchange Reconciliation & Health Audit");
         println!("{}", "=".repeat(90));
-        println!("• Consistent State: {}", if report.is_consistent { "✅ YES" } else { "⚠️ DISCREPANCY DETECTED" });
+        println!(
+            "• Consistent State: {}",
+            if report.is_consistent {
+                "✅ YES"
+            } else {
+                "⚠️ DISCREPANCY DETECTED"
+            }
+        );
         println!("• Active Matched Pairs: {}", report.active_pairs_count);
         if !report.orphaned_binance_positions.is_empty() {
-            println!("• ⚠️ Orphaned Binance Positions: {:?}", report.orphaned_binance_positions);
+            println!(
+                "• ⚠️ Orphaned Binance Positions: {:?}",
+                report.orphaned_binance_positions
+            );
         }
         if !report.orphaned_hyperliquid_positions.is_empty() {
-            println!("• ⚠️ Orphaned Hyperliquid Positions: {:?}", report.orphaned_hyperliquid_positions);
+            println!(
+                "• ⚠️ Orphaned Hyperliquid Positions: {:?}",
+                report.orphaned_hyperliquid_positions
+            );
         }
         if !report.delta_discrepancies.is_empty() {
             println!("• ⚠️ Delta Discrepancies: {:?}", report.delta_discrepancies);

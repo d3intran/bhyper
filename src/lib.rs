@@ -16,7 +16,7 @@ pub use binance::BinanceFuturesClient;
 pub use config::Config;
 pub use hyperliquid::signing::HyperliquidSigner;
 pub use hyperliquid::HyperliquidClient;
-pub use risk::{RiskAssessment, RiskSentinel};
+pub use risk::{ExitSignal, RiskAssessment, RiskSentinel};
 pub use state::StateStore;
 pub use strategy::{
     ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TriggerDecision, TwoLegExecutor,

@@ -122,7 +122,10 @@ fn test_trigger_engine_with_precision_lock() {
 
 #[test]
 fn test_state_store_lifecycle_and_persistence() {
-    let tmp_dir = std::env::temp_dir().join(format!("bhyper_test_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "bhyper_test_{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
     let state_file = tmp_dir.join("state.json");
 
     let mut store = StateStore::load_or_create(Some(state_file.clone())).unwrap();
@@ -223,4 +226,172 @@ fn test_hyperliquid_l1_order_signature() {
     assert_eq!(sig.r.len(), 66); // "0x" + 64 hex chars
     assert_eq!(sig.s.len(), 66);
     assert!(sig.v == 27 || sig.v == 28);
+}
+
+#[tokio::test]
+async fn test_ws_fill_event_broadcast_instant() {
+    let cache = MarketDataCache::new();
+    let mut fill_rx = cache.subscribe_fills();
+
+    let fill_event = bhyper::ws::market_cache::UserFillEvent {
+        coin: "SUI".to_string(),
+        px: 3.45,
+        sz: 10.0,
+        side: "B".to_string(),
+        time: 1710000000000,
+        fee: 0.001,
+        oid: 998877,
+        tid: 112233,
+    };
+
+    // Record fill on another thread / task
+    let fill_clone = fill_event.clone();
+    let cache_clone = cache.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        cache_clone.record_user_fill(fill_clone);
+    });
+
+    // Receive fill instantly
+    let received = tokio::time::timeout(std::time::Duration::from_millis(500), fill_rx.recv())
+        .await
+        .expect("Timeout waiting for fill")
+        .expect("Failed to receive fill");
+
+    assert_eq!(received.coin, "SUI");
+    assert_eq!(received.oid, 998877);
+    assert_eq!(received.sz, 10.0);
+    assert_eq!(received.px, 3.45);
+}
+
+#[test]
+fn test_risk_sentinel_exit_signals_comprehensive() {
+    use bhyper::config::RiskConfig;
+    use bhyper::risk::{ExitSignal, RiskSentinel};
+
+    let risk_config = RiskConfig {
+        max_delta_drift_pct: 5.0,
+        min_margin_ratio_pct: 20.0,
+        max_total_notional_usd: 5000.0,
+        auto_rebalance_delta: true,
+        stop_loss_basis_bps: 40.0,
+        max_holding_hours: 8.0,
+        min_exit_apr_pct: 5.0,
+    };
+    let sentinel = RiskSentinel::new(risk_config);
+
+    let mut pos = ActiveArbitragePosition {
+        symbol: "SUI".to_string(),
+        binance_side: PositionSide::Long,
+        binance_qty: 10.0,
+        binance_entry_price: 3.0,
+        hyperliquid_side: PositionSide::Short,
+        hyperliquid_qty: 10.0,
+        hyperliquid_entry_price: 3.0,
+        nominal_value_usd: 30.0,
+        net_delta_usd: 0.0,
+        entry_spread_apr: 45.0,
+        current_spread_apr: 45.0,
+        accumulated_funding_usd: 0.02,
+        opened_at: Utc::now(),
+        last_updated_at: Utc::now(),
+        is_closed: false,
+        closed_at: None,
+        realized_pnl_usd: None,
+    };
+
+    // Normal condition: should hold
+    let signal = sentinel.evaluate_position_exit(&pos, None, 3.0, 3.0);
+    assert_eq!(signal, ExitSignal::Hold);
+
+    // Spread Inversion condition
+    let inverted_opp = ArbitrageOpportunity {
+        symbol: "SUI".to_string(),
+        binance_mark_price: 3.0,
+        hyperliquid_mark_price: 3.0,
+        price_spread_pct: 0.0,
+        binance_rate_8h_pct: 0.01,
+        hyperliquid_rate_1h_pct: 0.0001,
+        binance_apr_pct: 35.0,
+        hyperliquid_apr_pct: 5.0,
+        net_spread_apr_pct: 30.0,
+        hyperliquid_side: PositionSide::Long,
+        binance_side: PositionSide::Short,
+        est_hourly_return_bps: 1.0,
+        est_break_even_hours: 1.0,
+        is_binance_settlement_next: false,
+        projected_1h_net_bps: 1.0,
+        projected_4h_net_bps: 1.0,
+        projected_8h_net_bps: 1.0,
+    };
+    // Position is HL Short (effective spread = HL APR - BN APR = 5 - 35 = -30%)
+    let signal_inv = sentinel.evaluate_position_exit(&pos, Some(&inverted_opp), 3.0, 3.0);
+    match signal_inv {
+        ExitSignal::SpreadInverted { current_apr, .. } => {
+            assert!(current_apr < 0.0);
+        }
+        _ => panic!("Expected SpreadInverted signal"),
+    }
+
+    // Basis stop loss condition: HL price pumped to $3.5 while BN price stayed at $3.0 (loss of $5 on $30 notional = -1666 bps)
+    let signal_loss = sentinel.evaluate_position_exit(&pos, None, 3.0, 3.5);
+    match signal_loss {
+        ExitSignal::BasisStopLoss { basis_pnl_bps, .. } => {
+            assert!(basis_pnl_bps < -40.0);
+        }
+        _ => panic!("Expected BasisStopLoss signal"),
+    }
+
+    // Max duration exceeded condition
+    pos.opened_at = Utc::now() - chrono::Duration::hours(9);
+    let signal_dur = sentinel.evaluate_position_exit(&pos, None, 3.0, 3.0);
+    match signal_dur {
+        ExitSignal::MaxDurationExceeded { holding_hours, .. } => {
+            assert!(holding_hours >= 8.0);
+        }
+        _ => panic!("Expected MaxDurationExceeded signal"),
+    }
+}
+
+#[test]
+fn test_market_cache_mids_preserves_funding_rates() {
+    let cache = MarketDataCache::new();
+
+    // Seed full funding rate info
+    cache.update_hyperliquid_rates(vec![FundingRateInfo {
+        symbol: "SOL".to_string(),
+        exchange: Exchange::Hyperliquid,
+        mark_price: 150.0,
+        index_price: 150.0,
+        funding_rate: 0.0002, // 175.2% APR
+        funding_interval_hours: 1.0,
+        annualized_apr_pct: 175.2,
+        next_funding_time: Some(Utc::now()),
+    }]);
+
+    // Update mids via WebSocket allMids
+    let mut mids = std::collections::HashMap::new();
+    mids.insert("SOL".to_string(), 152.5);
+    cache.update_hyperliquid_mids(mids);
+
+    assert!(cache.get_latest_prices("SOL").is_none()); // BN price not set yet
+
+    cache.update_binance_rates(vec![FundingRateInfo {
+        symbol: "SOL".to_string(),
+        exchange: Exchange::Binance,
+        mark_price: 152.0,
+        index_price: 152.0,
+        funding_rate: 0.0001,
+        funding_interval_hours: 8.0,
+        annualized_apr_pct: 10.95,
+        next_funding_time: Some(Utc::now()),
+    }]);
+
+    let prices = cache.get_latest_prices("SOL").unwrap();
+    assert_eq!(prices.0, 152.0); // BN price
+    assert_eq!(prices.1, 152.5); // HL updated mid price
+
+    // Verify funding rate was preserved (not zeroed out)
+    let opp = cache.get_latest_opportunity("SOL", 12.0).unwrap();
+    assert!((opp.hyperliquid_apr_pct - 175.2).abs() < 1e-3);
 }

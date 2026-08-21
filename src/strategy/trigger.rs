@@ -55,21 +55,33 @@ impl ProfitTriggerEngine {
     }
 
     /// 计算当前距离下一个整点结算还有多少秒
-    pub fn seconds_until_next_hour() -> u32 {
-        let now = Utc::now();
+    #[inline]
+    pub fn seconds_until_next_hour_at(now: &chrono::DateTime<Utc>) -> u32 {
         let minute = now.minute();
         let second = now.second();
         let elapsed_in_hour = minute * 60 + second;
         3600 - elapsed_in_hour
     }
 
+    /// 计算当前距离下一个整点结算还有多少秒
+    #[inline]
+    pub fn seconds_until_next_hour() -> u32 {
+        Self::seconds_until_next_hour_at(&Utc::now())
+    }
+
     /// 判断下一个整点是否是币安 8 小时结算周期 (00:00, 08:00, 16:00 UTC)
-    pub fn is_binance_settlement_hour() -> bool {
-        let now = Utc::now();
+    #[inline]
+    pub fn is_binance_settlement_hour_at(now: &chrono::DateTime<Utc>) -> bool {
         let minute = now.minute();
         let hour = now.hour();
         (minute >= 50 && (hour == 7 || hour == 15 || hour == 23))
             || (minute <= 10 && (hour == 8 || hour == 16 || hour == 0))
+    }
+
+    /// 判断下一个整点是否是币安 8 小时结算周期 (00:00, 08:00, 16:00 UTC)
+    #[inline]
+    pub fn is_binance_settlement_hour() -> bool {
+        Self::is_binance_settlement_hour_at(&Utc::now())
     }
 
     /// 核心判定: 严格评估当前机会是否符合单次确定性盈利触发条件 (支持精确步长对齐与时序结算排期)
@@ -80,8 +92,9 @@ impl ProfitTriggerEngine {
         ignore_window: bool,
         precision_info: Option<&SymbolPrecisionInfo>,
     ) -> TriggerDecision {
-        let secs_left = Self::seconds_until_next_hour();
-        let is_bn_settlement = Self::is_binance_settlement_hour();
+        let now = Utc::now();
+        let secs_left = Self::seconds_until_next_hour_at(&now);
+        let is_bn_settlement = Self::is_binance_settlement_hour_at(&now);
 
         // 1. 时间窗口锁 (Timing Sniper Lock)
         let in_window = ignore_window
@@ -157,11 +170,7 @@ impl ProfitTriggerEngine {
         // 4. 摩擦成本 (Maker-Taker vs Taker-Taker)
         // Maker-Taker: HL Maker 0.00% + BN Taker 0.04% + 滑点 0.02% + 平仓摩擦 0.06% = 12 bps
         // Taker-Taker: HL Taker 0.035% + BN Taker 0.04% + 滑点 0.04% + 平仓摩擦 0.115% = 23 bps
-        let total_friction_cost_bps = if self.maker_taker_mode {
-            12.0
-        } else {
-            23.0
-        };
+        let total_friction_cost_bps = if self.maker_taker_mode { 12.0 } else { 23.0 };
 
         // 5. 预期持仓净利润 (单期 1h 与 4h 预期)
         let single_cycle_net_bps = single_cycle_income_bps - total_friction_cost_bps;
@@ -174,7 +183,8 @@ impl ProfitTriggerEngine {
             - total_friction_cost_bps;
 
         // 触发条件: 回本时间 <= 2.5h 且 (4h 预期净利 >= min_net_profit_bps 或 1h 立即净赚)
-        let is_profitable = (opp.est_break_even_hours <= 2.5 && projected_4h_net_bps >= self.min_net_profit_bps)
+        let is_profitable = (opp.est_break_even_hours <= 2.5
+            && projected_4h_net_bps >= self.min_net_profit_bps)
             || single_cycle_net_bps >= self.min_net_profit_bps;
 
         if !is_profitable {

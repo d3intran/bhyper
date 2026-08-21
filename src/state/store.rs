@@ -82,8 +82,9 @@ impl StateStore {
 
         // Atomic write via temp file
         let tmp_path = self.path.with_extension("tmp");
-        fs::write(&tmp_path, json_str)
-            .with_context(|| format!("Failed to write temporary state to {}", tmp_path.display()))?;
+        fs::write(&tmp_path, json_str).with_context(|| {
+            format!("Failed to write temporary state to {}", tmp_path.display())
+        })?;
         fs::rename(&tmp_path, &self.path).with_context(|| {
             format!(
                 "Failed to rename {} to {}",
@@ -229,7 +230,8 @@ impl StateStore {
                     let bn_ok = (bn_q.signum() - expected_bn_sign).abs() < 1e-3;
                     let hl_ok = (hl_q.signum() - expected_hl_sign).abs() < 1e-3;
 
-                    let delta_diff = (bn_q.abs() - hl_q.abs()).abs() * local_pos.binance_entry_price;
+                    let delta_diff =
+                        (bn_q.abs() - hl_q.abs()).abs() * local_pos.binance_entry_price;
                     if delta_diff > 1.0 {
                         report.delta_discrepancies.push((sym.clone(), delta_diff));
                         report.warnings.push(format!(
@@ -241,7 +243,9 @@ impl StateStore {
                     if !bn_ok || !hl_ok {
                         report.warnings.push(format!(
                             "Side mismatch on {}: Live BN side sign = {}, HL side sign = {}",
-                            sym, bn_q.signum(), hl_q.signum()
+                            sym,
+                            bn_q.signum(),
+                            hl_q.signum()
                         ));
                     }
                 }
@@ -287,7 +291,11 @@ impl StateStore {
 
                     info!(
                         "Adopting external matched position for {}: BN {} {:.4}, HL {} {:.4}",
-                        sym, bn_side, bn_q.abs(), hl_side, hl_q.abs()
+                        sym,
+                        bn_side,
+                        bn_q.abs(),
+                        hl_side,
+                        hl_q.abs()
                     );
 
                     let adopted_pos = ActiveArbitragePosition {
