@@ -1,4 +1,5 @@
-use crate::types::{ArbitrageOpportunity, PositionSide};
+use crate::strategy::precision::LotPrecisionMatcher;
+use crate::types::{AlignedQuantity, ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo};
 use chrono::{Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +10,7 @@ pub struct TriggerDecision {
     pub hl_side: PositionSide,
     pub bn_side: PositionSide,
     pub target_notional_usd: f64,
+    pub aligned_quantity: Option<AlignedQuantity>,
     pub single_cycle_income_bps: f64,
     pub total_friction_cost_bps: f64,
     pub net_expected_profit_bps: f64,
@@ -18,10 +20,10 @@ pub struct TriggerDecision {
 
 #[derive(Debug, Clone)]
 pub struct ProfitTriggerEngine {
-    pub min_net_profit_bps: f64, // 单次必须确保的最小净利润 (例如 3.5 bps = 0.035%)
-    pub max_basis_spread_bps: f64, // 允许的最大基差倒挂 (例如 25 bps)
-    pub min_notional_usd: f64,   // 单笔最小名义价值 (例如 $12 满足两所限制)
-    pub max_notional_usd: f64,   // 单笔最大名义价值 (例如 $50 用于小资金)
+    pub min_net_profit_bps: f64,        // 单次必须确保的最小净利润 (例如 3.5 bps = 0.035%)
+    pub max_basis_spread_bps: f64,      // 允许的最大基差倒挂 (例如 20 bps)
+    pub min_notional_usd: f64,          // 单笔最小名义价值 (例如 $12 满足两所限制)
+    pub max_notional_usd: f64,          // 单笔最大名义价值 (例如 $50 用于小资金)
     pub sniper_window_secs: (u32, u32), // 狙击窗口: (最小秒数 10s, 最大秒数 60s)
 }
 
@@ -56,12 +58,13 @@ impl ProfitTriggerEngine {
         3600 - elapsed_in_hour
     }
 
-    /// 核心判定: 严格评估当前机会是否符合单次确定性盈利触发条件
+    /// 核心判定: 严格评估当前机会是否符合单次确定性盈利触发条件 (支持精确步长对齐与小资金安全锁)
     pub fn evaluate_opportunity(
         &self,
         opp: &ArbitrageOpportunity,
         available_margin_usd: f64,
         ignore_window: bool,
+        precision_info: Option<&SymbolPrecisionInfo>,
     ) -> TriggerDecision {
         let secs_left = Self::seconds_until_next_hour();
 
@@ -75,6 +78,7 @@ impl ProfitTriggerEngine {
                 hl_side: opp.hyperliquid_side,
                 bn_side: opp.binance_side,
                 target_notional_usd: 0.0,
+                aligned_quantity: None,
                 single_cycle_income_bps: 0.0,
                 total_friction_cost_bps: 0.0,
                 net_expected_profit_bps: 0.0,
@@ -86,26 +90,7 @@ impl ProfitTriggerEngine {
             };
         }
 
-        // 2. 标的单价硬筛选 (避开 BTC/ETH 等单价过高无法精细对齐的币种)
-        if opp.binance_mark_price > 500.0 {
-            return TriggerDecision {
-                symbol: opp.symbol.clone(),
-                should_open: false,
-                hl_side: opp.hyperliquid_side,
-                bn_side: opp.binance_side,
-                target_notional_usd: 0.0,
-                single_cycle_income_bps: 0.0,
-                total_friction_cost_bps: 0.0,
-                net_expected_profit_bps: 0.0,
-                seconds_to_settlement: secs_left,
-                reject_reason: Some(format!(
-                    "单价过高 (${:.2}), 小资金无法消除步长截断风险",
-                    opp.binance_mark_price
-                )),
-            };
-        }
-
-        // 3. 基差安全垫判断 (Basis Cushion Guard)
+        // 2. 基差安全垫判断 (Basis Cushion Guard)
         let entry_basis_bps = opp.price_spread_pct * 100.0;
         if opp.hyperliquid_side == PositionSide::Short
             && entry_basis_bps < -self.max_basis_spread_bps
@@ -116,6 +101,7 @@ impl ProfitTriggerEngine {
                 hl_side: opp.hyperliquid_side,
                 bn_side: opp.binance_side,
                 target_notional_usd: 0.0,
+                aligned_quantity: None,
                 single_cycle_income_bps: 0.0,
                 total_friction_cost_bps: 0.0,
                 net_expected_profit_bps: 0.0,
@@ -127,7 +113,7 @@ impl ProfitTriggerEngine {
             };
         }
 
-        // 4. 计算单期与目标持仓周期的利差收入
+        // 3. 计算单期与目标持仓周期的利差收入
         let hl_1h_rate_bps = (opp.hyperliquid_rate_1h_pct / 100.0) * 10_000.0;
         let bn_1h_equiv_bps = ((opp.binance_rate_8h_pct / 8.0) / 100.0) * 10_000.0;
 
@@ -136,11 +122,11 @@ impl ProfitTriggerEngine {
             PositionSide::Long => -hl_1h_rate_bps + bn_1h_equiv_bps,
         };
 
-        // 5. 计算确定性摩擦成本 (Maker-Taker 模式)
+        // 4. 计算确定性摩擦成本 (Maker-Taker 模式)
         // HL Maker 0.00% + BN Taker 0.04% + 双边滑点 0.02% + 平仓成本预留 0.04% = 10 bps (0.10%)
         let total_friction_cost_bps = 10.0;
 
-        // 6. 预期净利润 (基于持仓 4 小时或回本周期评估)
+        // 5. 预期净利润 (基于持仓 4 小时或回本周期评估)
         let single_cycle_net_bps = single_cycle_income_bps - total_friction_cost_bps;
         let target_holding_hours = 4.0;
         let multi_cycle_net_bps =
@@ -157,6 +143,7 @@ impl ProfitTriggerEngine {
                 hl_side: opp.hyperliquid_side,
                 bn_side: opp.binance_side,
                 target_notional_usd: 0.0,
+                aligned_quantity: None,
                 single_cycle_income_bps,
                 total_friction_cost_bps,
                 net_expected_profit_bps: single_cycle_net_bps,
@@ -168,21 +155,85 @@ impl ProfitTriggerEngine {
             };
         }
 
-        // 7. 计算适合小资金的名义仓位 (受限于可用资金与最大单笔上限)
-        let safe_notional =
+        // 6. 精确步长对齐与小资金名义价值校验 (Precision & StepSize Lock)
+        let target_usd =
             (available_margin_usd * 0.9).clamp(self.min_notional_usd, self.max_notional_usd);
 
-        TriggerDecision {
-            symbol: opp.symbol.clone(),
-            should_open: true,
-            hl_side: opp.hyperliquid_side,
-            bn_side: opp.binance_side,
-            target_notional_usd: safe_notional,
-            single_cycle_income_bps,
-            total_friction_cost_bps,
-            net_expected_profit_bps: multi_cycle_net_bps,
-            seconds_to_settlement: secs_left,
-            reject_reason: None,
+        if let Some(prec) = precision_info {
+            let aligned = LotPrecisionMatcher::calculate_aligned_quantity(
+                &opp.symbol,
+                opp.binance_mark_price,
+                target_usd,
+                prec,
+            );
+
+            if !aligned.is_aligned {
+                return TriggerDecision {
+                    symbol: opp.symbol.clone(),
+                    should_open: false,
+                    hl_side: opp.hyperliquid_side,
+                    bn_side: opp.binance_side,
+                    target_notional_usd: 0.0,
+                    aligned_quantity: Some(aligned.clone()),
+                    single_cycle_income_bps,
+                    total_friction_cost_bps,
+                    net_expected_profit_bps: multi_cycle_net_bps,
+                    seconds_to_settlement: secs_left,
+                    reject_reason: Some(
+                        aligned
+                            .reject_reason
+                            .unwrap_or_else(|| "两所下单步长精度无法对齐".to_string()),
+                    ),
+                };
+            }
+
+            TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: true,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: aligned.notional_usd,
+                aligned_quantity: Some(aligned),
+                single_cycle_income_bps,
+                total_friction_cost_bps,
+                net_expected_profit_bps: multi_cycle_net_bps,
+                seconds_to_settlement: secs_left,
+                reject_reason: None,
+            }
+        } else {
+            // Fallback price check if precision metadata not loaded
+            if opp.binance_mark_price > 500.0 {
+                return TriggerDecision {
+                    symbol: opp.symbol.clone(),
+                    should_open: false,
+                    hl_side: opp.hyperliquid_side,
+                    bn_side: opp.binance_side,
+                    target_notional_usd: 0.0,
+                    aligned_quantity: None,
+                    single_cycle_income_bps,
+                    total_friction_cost_bps,
+                    net_expected_profit_bps: multi_cycle_net_bps,
+                    seconds_to_settlement: secs_left,
+                    reject_reason: Some(format!(
+                        "单价过高 (${:.2}), 小资金无法消除步长截断风险",
+                        opp.binance_mark_price
+                    )),
+                };
+            }
+
+            TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: true,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: target_usd,
+                aligned_quantity: None,
+                single_cycle_income_bps,
+                total_friction_cost_bps,
+                net_expected_profit_bps: multi_cycle_net_bps,
+                seconds_to_settlement: secs_left,
+                reject_reason: None,
+            }
         }
     }
 }

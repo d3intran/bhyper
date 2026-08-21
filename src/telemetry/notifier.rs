@@ -1,8 +1,9 @@
 use crate::config::TelegramConfig;
-use crate::types::ArbitrageOpportunity;
+use crate::types::{AlignedQuantity, ArbitrageOpportunity, SymbolPrecisionInfo};
 use anyhow::Result;
 use serde_json::json;
 
+#[derive(Clone)]
 pub struct TelemetryNotifier {
     config: TelegramConfig,
     client: reqwest::Client,
@@ -82,5 +83,44 @@ impl TelemetryNotifier {
             );
         }
         println!("{}\n", "=".repeat(110));
+    }
+
+    /// Prints a formatted ASCII table for precision matching analysis
+    pub fn render_precision_table(
+        precisions: &[(SymbolPrecisionInfo, AlignedQuantity, f64)],
+        top_n: usize,
+    ) {
+        println!("\n{}", "=".repeat(115));
+        println!("📐 BHyper Small-Capital Lot Precision & Alignment Matrix ($50 Target Allocation)");
+        println!("{}", "=".repeat(115));
+        println!(
+            "{:<8} {:<10} {:<12} {:<10} {:<12} {:<12} {:<10} {:<30}",
+            "Symbol", "Price", "BN StepSize", "HL Decs", "BN Formatted", "HL Formatted", "Notional", "Status / Notes"
+        );
+        println!("{}", "-".repeat(115));
+
+        for (prec, aligned, price) in precisions.iter().take(top_n) {
+            let status = if aligned.is_aligned {
+                "✅ PERFECT MATCH (0 Delta)".to_string()
+            } else {
+                aligned
+                    .reject_reason
+                    .clone()
+                    .unwrap_or_else(|| "❌ MISMATCH".to_string())
+            };
+
+            println!(
+                "{:<8} ${:<9.3} {:<12} {:<10} {:<12} {:<12} ${:<9.2} {:<30}",
+                prec.symbol,
+                price,
+                prec.binance_step_size,
+                prec.hyperliquid_sz_decimals,
+                aligned.binance_formatted_qty,
+                aligned.hyperliquid_formatted_qty,
+                aligned.notional_usd,
+                status
+            );
+        }
+        println!("{}\n", "=".repeat(115));
     }
 }

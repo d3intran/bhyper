@@ -16,14 +16,13 @@ pub struct RiskAssessment {
     pub warnings: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl RiskSentinel {
-    #[allow(dead_code)]
     pub fn new(config: RiskConfig) -> Self {
         Self { config }
     }
 
-    /// Evaluates an active arbitrage pair for delta neutrality and margin safety
-    #[allow(dead_code)]
+    /// 评估活跃仓位的 Delta 中性健康度
     pub fn assess_position(&self, pos: &ActiveArbitragePosition) -> RiskAssessment {
         let mut warnings = Vec::new();
         let total_notional = pos.nominal_value_usd.max(1.0);
@@ -31,7 +30,7 @@ impl RiskSentinel {
 
         if delta_drift_pct > self.config.max_delta_drift_pct {
             let msg = format!(
-                "⚠️ Delta Drift Alert [{}]: Net Delta is ${:.2} ({:.2}% of notional, limit: {:.1}%)",
+                "⚠️ Delta Drift Alert [{}]: 净 Delta 为 ${:.2} ({:.2}% of notional, 阈值: {:.1}%)",
                 pos.symbol, pos.net_delta_usd, delta_drift_pct, self.config.max_delta_drift_pct
             );
             warn!("{}", msg);
@@ -45,5 +44,10 @@ impl RiskSentinel {
             delta_drift_pct,
             warnings,
         }
+    }
+
+    /// 评估利差衰减与平仓信号 (Spread Decay Guard)
+    pub fn should_exit_position(&self, current_spread_apr: f64, min_exit_apr: f64) -> bool {
+        current_spread_apr < min_exit_apr
     }
 }

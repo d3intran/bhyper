@@ -9,7 +9,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
-*A deterministic, delta-neutral, high-frequency arbitrage framework built in pure Rust for quantitative traders and small-capital agility.*
+*A deterministic, delta-neutral, high-frequency arbitrage framework built in pure Rust for quantitative traders and small-capital agility ($50 - $500).*
 
 [English](#features) | [中文说明](#核心特性-chinese) | [Architecture](#architecture) | [Quickstart](#quickstart) | [Full Blueprint](PLAN.md)
 
@@ -19,10 +19,11 @@
 
 ## 🌟 Highlights
 
-- **⚡ Sub-Millisecond Pure Rust Engine**: Zero-GC, lock-free concurrency, persistent HTTP keep-alive connection pools, and hardware-accelerated EIP-712 / HMAC-SHA256 signing (`alloy-primitives` / `k256` / `ring`).
+- **⚡ Sub-Millisecond Pure Rust Engine**: Zero-GC, persistent HTTP keep-alive connection pools, and hardware-accelerated EIP-712 / HMAC-SHA256 signing (`alloy-primitives` / `k256` / `ring` / `sha3` / `rmp-serde`).
 - **📊 Real-Time Multi-Asset APR Normalization**: Continuously scans and matches 200+ perpetual contracts between Binance FAPI (8h interval) and Hyperliquid L1 (1h interval).
 - **🎯 5 Profitability Locks & Timing Sniper**: Enforces VWAP depth calculations, entry basis cushion guards, and pre-settlement execution windows (T - 45s ~ T - 10s) ensuring positive expected returns on every single trade.
-- **🛡️ Small-Capital Protection Framework ($100 Ready)**: Specifically engineered to avoid lot step-size truncation risks, exchange minimum notional constraints, and multi-leg orphan exposure.
+- **🛡️ Small-Capital Protection & GCD Lot Precision Alignment ($50 ~ $100 Ready)**: Specifically engineered GCD precision matching algorithm eliminating lot step-size truncation risks, exchange minimum notional constraints ($12 buffer), and multi-leg orphan exposure.
+- **🧪 Safe Paper Trading (Dry-Run) & Live Execution Engine**: Automated two-leg Maker-Taker hedging state machine with orphan leg emergency unwind protection.
 - **📲 Remote Telegram Telemetry**: Automated Telegram alert dispatching for arbitrage triggers, live margin health, and hourly funding disbursements.
 
 ---
@@ -32,19 +33,21 @@
 ```mermaid
 flowchart TB
     subgraph Ingestion [Market Data Ingestion]
-        BN_WS[Binance FAPI Feed<br/>bookTicker / markPrice]
-        HL_WS[Hyperliquid L1 Feed<br/>allMids / activeAssetCtx]
+        BN_WS[Binance FAPI Feed<br/>premiumIndex / exchangeInfo]
+        HL_WS[Hyperliquid L1 Feed<br/>metaAndAssetCtxs / allMids]
     end
 
     subgraph Core [BHyper Arbitrage Core]
         Ranker[Multi-Asset APR Ranker<br/>200+ Live Pairs Matrix]
+        PrecisionMatcher[GCD Lot Precision Matcher<br/>0-Delta Small Capital Alignment]
         TriggerEngine[Profit Trigger Engine<br/>5 Deterministic Profit Locks]
         RiskSentinel[Dynamic Risk Sentinel<br/>Delta Neutral & Margin Guard]
     end
 
     subgraph Execution [Pre-Warmed Order Router]
-        HL_Maker[Hyperliquid L1 Client<br/>Post-Only Maker 0.00% Fee]
-        BN_Taker[Binance FAPI Client<br/>Instant 5ms Atomic IOC Hedge]
+        HL_Maker[Hyperliquid L1 Client<br/>Post-Only Maker 0.00% Fee / EIP-712]
+        BN_Taker[Binance FAPI Client<br/>Instant Atomic IOC Hedge / HMAC-SHA256]
+        TwoLegExecutor[Two-Leg State Machine<br/>Paper Trading & Live Execution]
     end
 
     subgraph Alerts [Remote Telemetry]
@@ -53,11 +56,14 @@ flowchart TB
 
     BN_WS --> Ranker
     HL_WS --> Ranker
-    Ranker --> TriggerEngine
+    Ranker --> PrecisionMatcher
+    PrecisionMatcher --> TriggerEngine
     RiskSentinel --> TriggerEngine
-    TriggerEngine --> HL_Maker
-    HL_Maker -->|userFills Push| BN_Taker
-    RiskSentinel -.->|Alerts| TG
+    TriggerEngine --> TwoLegExecutor
+    TwoLegExecutor --> HL_Maker
+    TwoLegExecutor --> BN_Taker
+    TwoLegExecutor -.->|Execution Alerts| TG
+    RiskSentinel -.->|Risk Alerts| TG
 ```
 
 ---
@@ -85,9 +91,17 @@ Scan live funding rate spreads across all 200+ shared pairs without API keys:
 ./target/release/bhyper scan --limit 20
 ```
 
-### 3. Deterministic Profit Trigger Evaluation
+### 3. GCD Lot Precision Alignment Analysis
 
-Evaluate live opportunities through the 5 Profitability Locks:
+Inspect small-capital precision compatibility across all shared pairs:
+
+```bash
+./target/release/bhyper precision --limit 15 --target-usd 50
+```
+
+### 4. Deterministic Profit Trigger Evaluation
+
+Evaluate live opportunities through the 5 Profitability Locks & Lot Precision Matcher:
 
 ```bash
 # Evaluate with $50 margin allocation
@@ -97,41 +111,22 @@ Evaluate live opportunities through the 5 Profitability Locks:
 ./target/release/bhyper trigger --margin-usd 50 --ignore-window
 ```
 
-### 4. Configuration (Optional for Live Trading)
-
-Copy the configuration template:
+### 5. Automated Arbitrage Execution Engine (Paper Trading & Live)
 
 ```bash
-cp config.example.toml ~/.config/bhyper/config.toml
+# Run Safe Paper Trading Simulation Mode (Default)
+./target/release/bhyper trade --margin-usd 50 --dry-run true
+
+# Run Live Trading Mode (Requires explicit --live-danger flag and funded API keys)
+./target/release/bhyper trade --margin-usd 50 --live-danger
 ```
 
-Edit credentials in `~/.config/bhyper/config.toml`:
+### 6. Emergency Manual Unwinding
 
-```toml
-[binance]
-api_key = "YOUR_BINANCE_API_KEY"
-api_secret = "YOUR_BINANCE_API_SECRET"
-
-[hyperliquid]
-private_key = "YOUR_HL_ETHEREUM_PRIVATE_KEY"
-wallet_address = "YOUR_HL_WALLET_ADDRESS"
-
-[strategy]
-min_open_apr_pct = 30.0
-max_position_usd_per_pair = 50.0
-leverage = 2.0
-maker_taker_mode = true
-
-[telegram]
-bot_token = "YOUR_BOT_TOKEN"
-chat_id = 123456789
-alerts_enabled = true
-```
-
-### 5. Start Continuous Monitor & Telegram Daemon
+Instantly close positions on both exchanges simultaneously:
 
 ```bash
-./target/release/bhyper monitor --interval-secs 15
+./target/release/bhyper unwind --symbol SAGA
 ```
 
 ---
@@ -141,8 +136,9 @@ alerts_enabled = true
 - **⚡ 纯 Rust 亚毫秒级低延迟架构**：零垃圾回收停顿，长连接连接池保持，纳秒级无分配数据流。
 - **📊 全币种实时费率归一化矩阵**：精准对齐币安 8 小时与 Hyperliquid 1 小时结算周期，以年化收益率（APR）实时排序。
 - **🎯 5 重确定性盈利锁与整点狙击**：结合盘口全深度 VWAP 计算与整点前 45 秒窗口狙击，确保单次操作覆盖双向手续费与滑点磨损。
-- **🛡️ 小资金专属保护机制（$100 初始本金优化）**：硬编码过滤高价币步长截断风险，严格满足交易所最小名义下单限制。
-- **📲 Telegram 实时监控与远程预警**：发现高利润机会与风控异常即刻推送。
+- **🛡️ GCD 步长对齐与小资金保护机制（$50 ~ $100 初始本金优化）**：内置 `LotPrecisionMatcher` 算法，严格对齐币安 `stepSize` 与 Hyperliquid `szDecimals`，实现 100% 零 Delta 漂移。
+- **🧪 模拟盘（Paper Trading）与实盘原子对冲引擎**：提供安全的模拟盘演练；实盘支持 Hyperliquid Post-Only Maker 挂单与币安秒级 IOC 对冲，并内置孤儿腿紧急平仓熔断。
+- **📲 Telegram 实时监控与远程预警**：发现高利润机会、完成建仓平仓与风控异常即刻推送。
 
 ---
 

@@ -1,16 +1,17 @@
-use crate::types::{Exchange, FundingRateInfo, PositionSide};
+use crate::types::{Exchange, FundingRateInfo, PositionSide, SymbolPrecisionInfo};
 use anyhow::{Context, Result};
 use chrono::{TimeZone, Utc};
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use sha2::Sha256;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
+#[allow(dead_code)]
 pub struct BinanceFuturesClient {
-    #[allow(dead_code)]
     api_key: String,
     api_secret: String,
     base_url: String,
@@ -40,7 +41,7 @@ pub struct BinanceBalanceItem {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub struct BinancePositionItem {
+pub struct BinancePositionRiskItem {
     pub symbol: String,
     pub position_amt: String,
     pub entry_price: String,
@@ -48,8 +49,23 @@ pub struct BinancePositionItem {
     pub un_realized_profit: String,
     pub liquidation_price: String,
     pub leverage: String,
+    pub margin_type: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct ExchangeInfoResponse {
+    symbols: Vec<ExchangeInfoSymbol>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct ExchangeInfoSymbol {
+    symbol: String,
+    status: String,
+    filters: Vec<serde_json::Value>,
+}
+
+#[allow(dead_code)]
 impl BinanceFuturesClient {
     pub fn new(api_key: String, api_secret: String, base_url: String) -> Self {
         let mut headers = HeaderMap::new();
@@ -96,6 +112,77 @@ impl BinanceFuturesClient {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64
+    }
+
+    /// Fetches Binance exchangeInfo and parses precision filters for all symbols
+    pub async fn fetch_precision_info(&self) -> Result<HashMap<String, SymbolPrecisionInfo>> {
+        let url = format!("{}/fapi/v1/exchangeInfo", self.base_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to request Binance exchangeInfo")?;
+
+        let info: ExchangeInfoResponse = resp
+            .json()
+            .await
+            .context("Failed to parse Binance exchangeInfo JSON")?;
+
+        let mut precisions = HashMap::with_capacity(info.symbols.len());
+
+        for s in info.symbols {
+            if s.status != "TRADING" || !s.symbol.ends_with("USDT") {
+                continue;
+            }
+            let base_coin = s.symbol.trim_end_matches("USDT").to_string();
+
+            let mut step_size = 1.0;
+            let mut tick_size = 0.0001;
+            let mut min_qty = 0.001;
+            let mut min_notional = 5.0;
+
+            for f in s.filters {
+                let filter_type = f.get("filterType").and_then(|v| v.as_str()).unwrap_or("");
+                match filter_type {
+                    "LOT_SIZE" => {
+                        if let Some(ss) = f.get("stepSize").and_then(|v| v.as_str()) {
+                            step_size = ss.parse::<f64>().unwrap_or(1.0);
+                        }
+                        if let Some(mq) = f.get("minQty").and_then(|v| v.as_str()) {
+                            min_qty = mq.parse::<f64>().unwrap_or(0.001);
+                        }
+                    }
+                    "PRICE_FILTER" => {
+                        if let Some(ts) = f.get("tickSize").and_then(|v| v.as_str()) {
+                            tick_size = ts.parse::<f64>().unwrap_or(0.0001);
+                        }
+                    }
+                    "MIN_NOTIONAL" => {
+                        if let Some(mn) = f.get("notional").and_then(|v| v.as_str()) {
+                            min_notional = mn.parse::<f64>().unwrap_or(5.0);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            precisions.insert(
+                base_coin.clone(),
+                SymbolPrecisionInfo {
+                    symbol: base_coin,
+                    binance_step_size: step_size,
+                    binance_tick_size: tick_size,
+                    binance_min_qty: min_qty,
+                    binance_min_notional: min_notional,
+                    hyperliquid_sz_decimals: 0,
+                    hyperliquid_asset_index: 0,
+                    hyperliquid_min_notional: 10.0,
+                },
+            );
+        }
+
+        Ok(precisions)
     }
 
     /// Fetches all active Premium Index & Funding Rate records from Binance FAPI
@@ -163,14 +250,34 @@ impl BinanceFuturesClient {
         Ok(items)
     }
 
+    /// Fetches active position risks across all contracts
+    pub async fn fetch_positions(&self) -> Result<Vec<BinancePositionRiskItem>> {
+        let query = format!("timestamp={}", Self::timestamp_ms());
+        let signed_query = self.sign_query(&query);
+        let url = format!("{}/fapi/v2/positionRisk?{}", self.base_url, signed_query);
+
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to request Binance positionRisk")?;
+
+        let items: Vec<BinancePositionRiskItem> = resp
+            .json()
+            .await
+            .context("Failed to parse Binance positionRisk JSON")?;
+
+        Ok(items)
+    }
+
     /// Places an order on Binance FAPI (Taker Market or Maker Limit)
-    #[allow(dead_code)]
     pub async fn place_order(
         &self,
         symbol: &str,
         side: PositionSide,
-        qty: f64,
-        price: Option<f64>,
+        qty_str: &str,
+        price_str: Option<&str>,
         reduce_only: bool,
     ) -> Result<serde_json::Value> {
         let pair = format!("{}USDT", symbol);
@@ -180,15 +287,15 @@ impl BinanceFuturesClient {
         };
         let ts = Self::timestamp_ms();
 
-        let query = if let Some(p) = price {
+        let query = if let Some(p) = price_str {
             format!(
                 "symbol={}&side={}&type=LIMIT&timeInForce=GTC&quantity={}&price={}&reduceOnly={}&timestamp={}",
-                pair, side_str, qty, p, reduce_only, ts
+                pair, side_str, qty_str, p, reduce_only, ts
             )
         } else {
             format!(
                 "symbol={}&side={}&type=MARKET&quantity={}&reduceOnly={}&timestamp={}",
-                pair, side_str, qty, reduce_only, ts
+                pair, side_str, qty_str, reduce_only, ts
             )
         };
 
@@ -206,6 +313,29 @@ impl BinanceFuturesClient {
             .json()
             .await
             .context("Failed to parse Binance order response JSON")?;
+
+        Ok(json_val)
+    }
+
+    /// Cancels an open order on Binance FAPI
+    pub async fn cancel_order(&self, symbol: &str, order_id: u64) -> Result<serde_json::Value> {
+        let pair = format!("{}USDT", symbol);
+        let ts = Self::timestamp_ms();
+        let query = format!("symbol={}&orderId={}&timestamp={}", pair, order_id, ts);
+        let signed_query = self.sign_query(&query);
+        let url = format!("{}/fapi/v1/order?{}", self.base_url, signed_query);
+
+        let resp = self
+            .http_client
+            .delete(&url)
+            .send()
+            .await
+            .context("Failed to cancel Binance order")?;
+
+        let json_val: serde_json::Value = resp
+            .json()
+            .await
+            .context("Failed to parse Binance cancel response JSON")?;
 
         Ok(json_val)
     }

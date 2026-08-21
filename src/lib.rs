@@ -12,8 +12,14 @@ pub mod types;
 
 pub use binance::BinanceFuturesClient;
 pub use config::Config;
+pub use hyperliquid::signing::HyperliquidSigner;
 pub use hyperliquid::HyperliquidClient;
 pub use risk::{RiskAssessment, RiskSentinel};
-pub use strategy::{ArbitrageScanner, ProfitTriggerEngine, TriggerDecision};
+pub use strategy::{
+    ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TriggerDecision, TwoLegExecutor,
+};
 pub use telemetry::TelemetryNotifier;
-pub use types::{ArbitrageOpportunity, Exchange, FundingRateInfo, PositionSide};
+pub use types::{
+    ActiveArbitragePosition, AlignedQuantity, ArbitrageOpportunity, Exchange, FundingRateInfo,
+    OrderExecutionResult, OrderType, PositionSide, SymbolPrecisionInfo,
+};

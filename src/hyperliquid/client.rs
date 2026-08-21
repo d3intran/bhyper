@@ -1,72 +1,69 @@
+use crate::hyperliquid::signing::{
+    CancelWire, ExchangeAction, ExchangeRequestPayload, HyperliquidSigner, LimitWire,
+    OrderTypeWire, OrderWire,
+};
 use crate::types::{Exchange, FundingRateInfo};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::json;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct HyperliquidClient {
-    #[allow(dead_code)]
     private_key: String,
     wallet_address: String,
     base_url: String,
+    is_mainnet: bool,
     http_client: reqwest::Client,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct UniverseItem {
     pub name: String,
-    #[allow(dead_code)]
     #[serde(rename = "szDecimals")]
     pub sz_decimals: u32,
-    #[allow(dead_code)]
     #[serde(rename = "maxLeverage")]
     pub max_leverage: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct AssetCtxItem {
     pub funding: String,
-    #[allow(dead_code)]
     #[serde(rename = "openInterest")]
     pub open_interest: String,
     #[serde(rename = "markPx")]
     pub mark_px: String,
     #[serde(rename = "oraclePx")]
     pub oracle_px: Option<String>,
-    #[allow(dead_code)]
     #[serde(rename = "midPx")]
     pub mid_px: Option<String>,
-    #[allow(dead_code)]
     #[serde(rename = "premium")]
     pub premium: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct MetaAndAssetCtxsResponse(pub MetaPart, pub Vec<AssetCtxItem>);
-
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct MetaPart {
     pub universe: Vec<UniverseItem>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct ClearinghouseStateResponse {
     pub margin_summary: MarginSummary,
-    #[allow(dead_code)]
     pub cross_margin_summary: MarginSummary,
-    #[allow(dead_code)]
     pub asset_positions: Vec<AssetPositionWrapper>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct MarginSummary {
     pub account_value: String,
     pub total_margin_used: String,
-    #[allow(dead_code)]
     pub total_ntl_pos: String,
     pub total_raw_usd: String,
 }
@@ -91,6 +88,18 @@ pub struct AssetPosition {
     pub leverage: Option<serde_json::Value>,
 }
 
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+pub struct OpenOrderItem {
+    pub coin: String,
+    pub limit_px: String,
+    pub oid: u64,
+    pub side: String,
+    pub sz: String,
+    pub timestamp: i64,
+}
+
+#[allow(dead_code)]
 impl HyperliquidClient {
     pub fn new(private_key: String, wallet_address: String, base_url: String) -> Self {
         let mut headers = HeaderMap::new();
@@ -109,12 +118,44 @@ impl HyperliquidClient {
         } else {
             base_url
         };
+
+        let is_mainnet = !base_url.contains("testnet");
+
         Self {
             private_key,
             wallet_address,
             base_url,
+            is_mainnet,
             http_client,
         }
+    }
+
+    fn timestamp_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+
+    /// 获取所有交易对的 Meta 元信息 (universe 映射)
+    pub async fn fetch_meta(&self) -> Result<MetaPart> {
+        let url = format!("{}/info", self.base_url);
+        let payload = json!({ "type": "meta" });
+
+        let resp = self
+            .http_client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to request Hyperliquid /info meta")?;
+
+        let meta: MetaPart = resp
+            .json()
+            .await
+            .context("Failed to parse Hyperliquid meta JSON")?;
+
+        Ok(meta)
     }
 
     /// Fetches all active Hyperliquid universe and funding rate contexts
@@ -189,5 +230,157 @@ impl HyperliquidClient {
             .context("Failed to parse Hyperliquid clearinghouseState JSON")?;
 
         Ok(state)
+    }
+
+    /// 获取当前用户的挂单列表
+    pub async fn fetch_open_orders(&self) -> Result<Vec<OpenOrderItem>> {
+        if self.wallet_address.is_empty() {
+            anyhow::bail!("Hyperliquid wallet address is not configured");
+        }
+        let url = format!("{}/info", self.base_url);
+        let payload = json!({
+            "type": "openOrders",
+            "user": self.wallet_address
+        });
+
+        let resp = self
+            .http_client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to request Hyperliquid openOrders")?;
+
+        let orders: Vec<OpenOrderItem> = resp
+            .json()
+            .await
+            .context("Failed to parse Hyperliquid openOrders JSON")?;
+
+        Ok(orders)
+    }
+
+    /// 发送 L1 下单请求 (支持 Post-Only Maker, GTC Limit, IOC)
+    pub async fn place_order(
+        &self,
+        asset_index: u32,
+        is_buy: bool,
+        price: f64,
+        size: f64,
+        reduce_only: bool,
+        is_post_only: bool,
+        is_ioc: bool,
+    ) -> Result<serde_json::Value> {
+        if self.private_key.is_empty() {
+            anyhow::bail!("Hyperliquid private key is required for placing orders");
+        }
+
+        let tif = if is_post_only {
+            "Alo" // Add Liquidity Only (Post-Only Maker)
+        } else if is_ioc {
+            "Ioc" // Immediate-Or-Cancel
+        } else {
+            "Gtc" // Good-Til-Cancelled
+        };
+
+        let price_str = format!("{:.6}", price)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
+        let size_str = format!("{:.6}", size)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
+
+        let action = ExchangeAction::Order {
+            orders: vec![OrderWire {
+                a: asset_index,
+                b: is_buy,
+                p: price_str,
+                s: size_str,
+                r: reduce_only,
+                t: OrderTypeWire {
+                    limit: LimitWire {
+                        tif: tif.to_string(),
+                    },
+                },
+            }],
+            grouping: "na".to_string(),
+        };
+
+        let nonce = Self::timestamp_ms();
+        let signature = HyperliquidSigner::sign_l1_action(
+            &action,
+            nonce,
+            &self.private_key,
+            self.is_mainnet,
+        )?;
+
+        let payload = ExchangeRequestPayload {
+            action,
+            nonce,
+            signature,
+            vault_address: None,
+        };
+
+        let url = format!("{}/exchange", self.base_url);
+        let resp = self
+            .http_client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to send Hyperliquid order request")?;
+
+        let res_json: serde_json::Value = resp
+            .json()
+            .await
+            .context("Failed to parse Hyperliquid order response")?;
+
+        Ok(res_json)
+    }
+
+    /// 撤销 Hyperliquid 挂单
+    pub async fn cancel_order(&self, asset_index: u32, oid: u64) -> Result<serde_json::Value> {
+        if self.private_key.is_empty() {
+            anyhow::bail!("Hyperliquid private key is required for cancelling orders");
+        }
+
+        let action = ExchangeAction::Cancel {
+            cancels: vec![CancelWire {
+                a: asset_index,
+                o: oid,
+            }],
+        };
+
+        let nonce = Self::timestamp_ms();
+        let signature = HyperliquidSigner::sign_l1_action(
+            &action,
+            nonce,
+            &self.private_key,
+            self.is_mainnet,
+        )?;
+
+        let payload = ExchangeRequestPayload {
+            action,
+            nonce,
+            signature,
+            vault_address: None,
+        };
+
+        let url = format!("{}/exchange", self.base_url);
+        let resp = self
+            .http_client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to send Hyperliquid cancel request")?;
+
+        let res_json: serde_json::Value = resp
+            .json()
+            .await
+            .context("Failed to parse Hyperliquid cancel response")?;
+
+        Ok(res_json)
     }
 }

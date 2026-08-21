@@ -32,6 +32,15 @@ impl fmt::Display for PositionSide {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub enum OrderType {
+    Limit,
+    Market,
+    PostOnly, // Hyperliquid ALO (Add Liquidity Only) / Binance GTX
+    Ioc,      // Immediate Or Cancel
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FundingRateInfo {
     pub symbol: String,
@@ -62,17 +71,47 @@ pub struct ArbitrageOpportunity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct BalanceInfo {
-    pub exchange: Exchange,
-    pub asset: String,
-    pub total_equity_usd: f64,
-    pub available_margin_usd: f64,
-    pub margin_usage_pct: f64,
+pub struct SymbolPrecisionInfo {
+    pub symbol: String,
+    pub binance_step_size: f64,
+    pub binance_tick_size: f64,
+    pub binance_min_qty: f64,
+    pub binance_min_notional: f64,
+    pub hyperliquid_sz_decimals: u32,
+    pub hyperliquid_asset_index: u32,
+    pub hyperliquid_min_notional: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlignedQuantity {
+    pub symbol: String,
+    pub qty: f64,
+    pub notional_usd: f64,
+    pub binance_formatted_qty: String,
+    pub hyperliquid_formatted_qty: String,
+    pub is_aligned: bool,
+    pub delta_imbalance_usd: f64,
+    pub delta_imbalance_pct: f64,
+    pub reject_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
+pub struct OrderExecutionResult {
+    pub exchange: Exchange,
+    pub symbol: String,
+    pub order_id: String,
+    pub side: PositionSide,
+    pub price: f64,
+    pub requested_qty: f64,
+    pub filled_qty: f64,
+    pub is_filled: bool,
+    pub fee_usd: f64,
+    pub timestamp: DateTime<Utc>,
+    pub raw_response: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveArbitragePosition {
     pub symbol: String,
     pub binance_side: PositionSide,
@@ -87,4 +126,16 @@ pub struct ActiveArbitragePosition {
     pub current_spread_apr: f64,
     pub accumulated_funding_usd: f64,
     pub opened_at: DateTime<Utc>,
+    pub last_updated_at: DateTime<Utc>,
+    pub is_closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct BalanceInfo {
+    pub exchange: Exchange,
+    pub asset: String,
+    pub total_equity_usd: f64,
+    pub available_margin_usd: f64,
+    pub margin_usage_pct: f64,
 }

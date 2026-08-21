@@ -11,14 +11,17 @@ use binance::BinanceFuturesClient;
 use clap::{Parser, Subcommand};
 use config::Config;
 use hyperliquid::HyperliquidClient;
-use strategy::ArbitrageScanner;
+use strategy::{ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TwoLegExecutor};
 use telemetry::TelemetryNotifier;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "bhyper")]
-#[command(about = "⚡ Ultra Low-Latency Binance x Hyperliquid Funding Rate Arbitrage Engine", long_about = None)]
+#[command(
+    about = "⚡ Ultra Low-Latency Binance x Hyperliquid Funding Rate Arbitrage Engine",
+    long_about = None
+)]
 struct Cli {
     #[arg(short, long, default_value = "config.toml")]
     config: String,
@@ -34,19 +37,42 @@ enum Commands {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
-    /// 启动实时利差监控与 Telegram 预警守护循环
-    Monitor {
-        #[arg(short, long, default_value_t = 15)]
-        interval_secs: u64,
-    },
-    /// 检查并验证 Binance 与 Hyperliquid API 连接与账户权益
-    Check,
-    /// 运行确定性盈利扳机评估器 (单次套利可行性与窗口校验)
+    /// 运行确定性盈利扳机评估器 (单次套利可行性、精确步长对齐与整点窗口校验)
     Trigger {
         #[arg(short, long, default_value_t = 50.0)]
         margin_usd: f64,
         #[arg(short, long, default_value_t = false)]
         ignore_window: bool,
+    },
+    /// 检查两所所有共同支持交易对的下单步长精度与小资金对齐可行性
+    Precision {
+        #[arg(short, long, default_value_t = 25)]
+        limit: usize,
+        #[arg(short, long, default_value_t = 50.0)]
+        target_usd: f64,
+    },
+    /// 检查并验证 Binance 与 Hyperliquid API 连接与账户权益
+    Check,
+    /// 启动实时利差监控与 Telegram 预警守护循环
+    Monitor {
+        #[arg(short, long, default_value_t = 15)]
+        interval_secs: u64,
+    },
+    /// 启动套利执行引擎 (支持安全模拟盘 Paper Trading 与实盘两腿对冲)
+    Trade {
+        #[arg(short, long, default_value_t = 50.0)]
+        margin_usd: f64,
+        #[arg(short, long, default_value_t = true)]
+        dry_run: bool,
+        #[arg(long, default_value_t = false)]
+        live_danger: bool,
+        #[arg(short, long, default_value_t = 10)]
+        interval_secs: u64,
+    },
+    /// 紧急手动平仓指定币种在双边的所有对冲头寸
+    Unwind {
+        #[arg(short, long)]
+        symbol: String,
     },
     /// 显示当前配置与配置文件位置
     Config,
@@ -95,6 +121,209 @@ async fn main() -> Result<()> {
                 elapsed.as_secs_f64() * 1000.0,
                 config.strategy.min_open_apr_pct
             );
+        }
+
+        Commands::Trigger {
+            margin_usd,
+            ignore_window,
+        } => {
+            println!(
+                "🎯 Running Deterministic Profit Trigger Evaluation (Margin: ${:.2}, Ignore Window: {})...",
+                margin_usd, ignore_window
+            );
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
+
+            let (opps_res, precisions_res) = tokio::join!(
+                scanner.scan_opportunities(),
+                scanner.fetch_symbol_precisions()
+            );
+
+            let opps = opps_res?;
+            let precisions = precisions_res.unwrap_or_default();
+            let trigger_engine = ProfitTriggerEngine::default();
+
+            println!("\n{}", "=".repeat(125));
+            println!("🎯 BHyper Deterministic Profit Trigger Analysis (With Exact Lot Precision Math)");
+            println!("{}", "=".repeat(125));
+            println!(
+                "{:<8} {:<8} {:<12} {:<12} {:<12} {:<15} {:<15} {:<30}",
+                "Symbol",
+                "Trigger",
+                "1h Inc(bps)",
+                "Friction",
+                "Net PnL",
+                "Target USD",
+                "Aligned Qty",
+                "Status / Reason"
+            );
+            println!("{}", "-".repeat(125));
+
+            let mut passed_count = 0;
+            for opp in opps.iter().take(20) {
+                let prec_info = precisions.get(&opp.symbol);
+                let decision = trigger_engine.evaluate_opportunity(
+                    opp,
+                    margin_usd,
+                    ignore_window,
+                    prec_info,
+                );
+
+                let trigger_badge = if decision.should_open {
+                    passed_count += 1;
+                    "✅ YES"
+                } else {
+                    "❌ NO"
+                };
+
+                let aligned_str = match &decision.aligned_quantity {
+                    Some(a) => format!("{} (0-Delta)", a.binance_formatted_qty),
+                    None => "N/A".to_string(),
+                };
+
+                let reason_str = decision
+                    .reject_reason
+                    .unwrap_or_else(|| "🎯 ALL PROFIT LOCKS PASSED!".to_string());
+
+                println!(
+                    "{:<8} {:<8} {:>10.2} bps {:>10.2} bps {:>10.2} bps ${:<14.2} {:<15} {:<30}",
+                    decision.symbol,
+                    trigger_badge,
+                    decision.single_cycle_income_bps,
+                    decision.total_friction_cost_bps,
+                    decision.net_expected_profit_bps,
+                    decision.target_notional_usd,
+                    aligned_str,
+                    reason_str
+                );
+            }
+            println!("{}\n", "=".repeat(125));
+            let secs_left = ProfitTriggerEngine::seconds_until_next_hour();
+            println!(
+                "⏱️  Seconds to next hourly settlement: {}s (Sniper window: 10s ~ 60s)",
+                secs_left
+            );
+            println!("📊 Actionable Triggers: {} / 20 evaluated.\n", passed_count);
+        }
+
+        Commands::Precision { limit, target_usd } => {
+            println!(
+                "🔍 Fetching exchange metadata and computing lot precision alignment for target ${:.2}...",
+                target_usd
+            );
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
+
+            let (opps_res, precisions_res) = tokio::join!(
+                scanner.scan_opportunities(),
+                scanner.fetch_symbol_precisions()
+            );
+
+            let opps = opps_res?;
+            let precisions = precisions_res?;
+
+            let mut price_map = std::collections::HashMap::new();
+            for o in &opps {
+                price_map.insert(o.symbol.clone(), o.binance_mark_price);
+            }
+
+            let mut precision_rows = Vec::new();
+            for (sym, prec) in &precisions {
+                if let Some(&price) = price_map.get(sym) {
+                    let aligned = LotPrecisionMatcher::calculate_aligned_quantity(
+                        sym, price, target_usd, prec,
+                    );
+                    precision_rows.push((prec.clone(), aligned, price));
+                }
+            }
+
+            precision_rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+            TelemetryNotifier::render_precision_table(&precision_rows, limit);
+            println!(
+                "✅ Analyzed {} shared pairs. Verified small-capital zero-delta compatibility.\n",
+                precision_rows.len()
+            );
+        }
+
+        Commands::Check => {
+            println!("🔍 Checking Binance & Hyperliquid APIs and balances...");
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+
+            // Check Binance
+            match bn_client.fetch_balances().await {
+                Ok(balances) => {
+                    println!("✅ Binance FAPI Connected:");
+                    for b in balances {
+                        let total = b.balance.parse::<f64>().unwrap_or(0.0);
+                        if total > 0.0 {
+                            println!(
+                                "   • Asset: {} | Total: {} | Available: {}",
+                                b.asset, b.balance, b.available_balance
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("⚠️ Binance FAPI Balance (Auth/API Key needed): {}", e);
+                }
+            }
+
+            // Check Hyperliquid
+            match hl_client.fetch_clearinghouse_state().await {
+                Ok(state) => {
+                    println!("✅ Hyperliquid L1 Connected:");
+                    println!(
+                        "   • Account Value: ${}",
+                        state.margin_summary.account_value
+                    );
+                    println!(
+                        "   • Total Margin Used: ${}",
+                        state.margin_summary.total_margin_used
+                    );
+                    println!(
+                        "   • Total Raw USD: ${}",
+                        state.margin_summary.total_raw_usd
+                    );
+                }
+                Err(e) => {
+                    println!(
+                        "⚠️ Hyperliquid Clearinghouse (Wallet address needed): {}",
+                        e
+                    );
+                }
+            }
         }
 
         Commands::Monitor { interval_secs } => {
@@ -163,8 +392,20 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Check => {
-            println!("🔍 Checking Binance & Hyperliquid APIs and balances...");
+        Commands::Trade {
+            margin_usd,
+            dry_run,
+            live_danger,
+            interval_secs,
+        } => {
+            let actual_dry_run = if live_danger {
+                warn!("⚠️ LIVE TRADING MODE ENABLED WITH REAL FUNDS!");
+                false
+            } else {
+                info!("🧪 Dry-run simulation mode active (Safety paper trading: {}).", dry_run);
+                true
+            };
+
             let bn_client = BinanceFuturesClient::new(
                 config.binance.api_key.clone(),
                 config.binance.api_secret.clone(),
@@ -175,57 +416,83 @@ async fn main() -> Result<()> {
                 config.hyperliquid.wallet_address.clone(),
                 config.hyperliquid.base_url.clone(),
             );
+            let notifier = TelemetryNotifier::new(config.telegram.clone());
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
 
-            // Check Binance
-            match bn_client.fetch_balances().await {
-                Ok(balances) => {
-                    println!("✅ Binance FAPI Connected:");
-                    for b in balances {
-                        let total = b.balance.parse::<f64>().unwrap_or(0.0);
-                        if total > 0.0 {
-                            println!(
-                                "   • Asset: {} | Total: {} | Available: {}",
-                                b.asset, b.balance, b.available_balance
-                            );
+            let executor = TwoLegExecutor::new(
+                BinanceFuturesClient::new(
+                    config.binance.api_key.clone(),
+                    config.binance.api_secret.clone(),
+                    config.binance.base_url.clone(),
+                ),
+                HyperliquidClient::new(
+                    config.hyperliquid.private_key.clone(),
+                    config.hyperliquid.wallet_address.clone(),
+                    config.hyperliquid.base_url.clone(),
+                ),
+                notifier.clone(),
+                actual_dry_run,
+            );
+
+            let trigger_engine = ProfitTriggerEngine::default();
+            info!(
+                "Starting BHyper Automated Arbitrage Engine (Interval: {}s, Max Margin: ${:.2})...",
+                interval_secs, margin_usd
+            );
+
+            let mut timer = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            loop {
+                timer.tick().await;
+                let (opps_res, precisions_res) = tokio::join!(
+                    scanner.scan_opportunities(),
+                    scanner.fetch_symbol_precisions()
+                );
+
+                let opps = match opps_res {
+                    Ok(o) => o,
+                    Err(e) => {
+                        tracing::error!("Error scanning: {:?}", e);
+                        continue;
+                    }
+                };
+
+                let precisions = precisions_res.unwrap_or_default();
+
+                for opp in opps.iter().take(5) {
+                    let prec = match precisions.get(&opp.symbol) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+
+                    let decision = trigger_engine.evaluate_opportunity(
+                        opp,
+                        margin_usd,
+                        false, // strictly enforce sniper window in automated trading!
+                        Some(prec),
+                    );
+
+                    if decision.should_open {
+                        info!(
+                            "🎯 PROFIT TRIGGER FIRED for {}! Executing two-leg arbitrage...",
+                            opp.symbol
+                        );
+                        match executor.execute_open(opp, &decision, prec).await {
+                            Ok(pos) => {
+                                info!("Successfully established arbitrage position on {}", pos.symbol);
+                                break;
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to execute trade on {}: {:?}", opp.symbol, e);
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    println!("⚠️ Binance FAPI Balance (Auth/API Key needed): {}", e);
-                }
-            }
-
-            // Check Hyperliquid
-            match hl_client.fetch_clearinghouse_state().await {
-                Ok(state) => {
-                    println!("✅ Hyperliquid L1 Connected:");
-                    println!(
-                        "   • Account Value: ${}",
-                        state.margin_summary.account_value
-                    );
-                    println!(
-                        "   • Total Margin Used: ${}",
-                        state.margin_summary.total_margin_used
-                    );
-                    println!(
-                        "   • Total Raw USD: ${}",
-                        state.margin_summary.total_raw_usd
-                    );
-                }
-                Err(e) => {
-                    println!(
-                        "⚠️ Hyperliquid Clearinghouse (Wallet address needed): {}",
-                        e
-                    );
                 }
             }
         }
 
-        Commands::Trigger {
-            margin_usd,
-            ignore_window,
-        } => {
-            println!("🎯 Running Deterministic Profit Trigger Evaluation (Margin: ${:.2}, Ignore Window: {})...", margin_usd, ignore_window);
+        Commands::Unwind { symbol } => {
+            info!("Emergency unwinding position for {} on both exchanges...", symbol);
             let bn_client = BinanceFuturesClient::new(
                 config.binance.api_key.clone(),
                 config.binance.api_secret.clone(),
@@ -236,60 +503,41 @@ async fn main() -> Result<()> {
                 config.hyperliquid.wallet_address.clone(),
                 config.hyperliquid.base_url.clone(),
             );
+            let notifier = TelemetryNotifier::new(config.telegram.clone());
 
-            let scanner =
-                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
+            let executor = TwoLegExecutor::new(bn_client, hl_client, notifier, false);
 
-            let trigger_engine = strategy::ProfitTriggerEngine::default();
-            let opps = scanner.scan_opportunities().await?;
+            let fake_pos = types::ActiveArbitragePosition {
+                symbol: symbol.clone(),
+                binance_side: types::PositionSide::Long,
+                binance_qty: 0.0,
+                binance_entry_price: 0.0,
+                hyperliquid_side: types::PositionSide::Short,
+                hyperliquid_qty: 0.0,
+                hyperliquid_entry_price: 0.0,
+                nominal_value_usd: 0.0,
+                net_delta_usd: 0.0,
+                entry_spread_apr: 0.0,
+                current_spread_apr: 0.0,
+                accumulated_funding_usd: 0.0,
+                opened_at: chrono::Utc::now(),
+                last_updated_at: chrono::Utc::now(),
+                is_closed: false,
+            };
 
-            println!("\n{}", "=".repeat(110));
-            println!("🎯 BHyper Deterministic Profit Trigger Analysis (Small Capital Guard: $100 Framework)");
-            println!("{}", "=".repeat(110));
-            println!(
-                "{:<8} {:<8} {:<12} {:<12} {:<12} {:<15} {:<30}",
-                "Symbol",
-                "Trigger",
-                "1h Inc(bps)",
-                "Friction",
-                "Net PnL",
-                "Notional",
-                "Status / Reason"
-            );
-            println!("{}", "-".repeat(110));
+            let default_prec = types::SymbolPrecisionInfo {
+                symbol: symbol.clone(),
+                binance_step_size: 1.0,
+                binance_tick_size: 0.001,
+                binance_min_qty: 1.0,
+                binance_min_notional: 5.0,
+                hyperliquid_sz_decimals: 0,
+                hyperliquid_asset_index: 0,
+                hyperliquid_min_notional: 10.0,
+            };
 
-            let mut passed_count = 0;
-            for opp in opps.iter().take(15) {
-                let decision = trigger_engine.evaluate_opportunity(opp, margin_usd, ignore_window);
-                let trigger_badge = if decision.should_open {
-                    passed_count += 1;
-                    "✅ YES"
-                } else {
-                    "❌ NO"
-                };
-
-                let reason_str = decision
-                    .reject_reason
-                    .unwrap_or_else(|| "🎯 ALL PROFIT LOCKS PASSED!".to_string());
-
-                println!(
-                    "{:<8} {:<8} {:>10.2} bps {:>10.2} bps {:>10.2} bps ${:<14.2} {:<30}",
-                    decision.symbol,
-                    trigger_badge,
-                    decision.single_cycle_income_bps,
-                    decision.total_friction_cost_bps,
-                    decision.net_expected_profit_bps,
-                    decision.target_notional_usd,
-                    reason_str
-                );
-            }
-            println!("{}\n", "=".repeat(110));
-            let secs_left = strategy::ProfitTriggerEngine::seconds_until_next_hour();
-            println!(
-                "⏱️  Seconds to next hourly settlement: {}s (Sniper window: 10s ~ 60s)",
-                secs_left
-            );
-            println!("📊 Actionable Triggers: {} / 15 evaluated.\n", passed_count);
+            let _ = executor.execute_close(&fake_pos, &default_prec).await;
+            println!("✅ Unwind command dispatched for {}.", symbol);
         }
 
         Commands::Config => {

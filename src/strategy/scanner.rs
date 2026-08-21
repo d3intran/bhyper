@@ -1,6 +1,6 @@
 use crate::binance::BinanceFuturesClient;
 use crate::hyperliquid::HyperliquidClient;
-use crate::types::{ArbitrageOpportunity, PositionSide};
+use crate::types::{ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo};
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -24,6 +24,31 @@ impl ArbitrageScanner {
             hyperliquid,
             roundtrip_cost_bps: cost_bps,
         }
+    }
+
+    /// 获取两所所有共同支持交易对的完整精度与元数据信息 (StepSize, SzDecimals, AssetIndex, MinNotional)
+    pub async fn fetch_symbol_precisions(&self) -> Result<HashMap<String, SymbolPrecisionInfo>> {
+        let (bn_prec_res, hl_meta_res) = tokio::join!(
+            self.binance.fetch_precision_info(),
+            self.hyperliquid.fetch_meta()
+        );
+
+        let mut bn_precisions = bn_prec_res?;
+        let hl_meta = hl_meta_res?;
+
+        let mut shared_precisions = HashMap::new();
+
+        for (idx, u) in hl_meta.universe.into_iter().enumerate() {
+            let symbol = u.name.to_uppercase();
+            if let Some(bn_info) = bn_precisions.get_mut(&symbol) {
+                bn_info.hyperliquid_sz_decimals = u.sz_decimals;
+                bn_info.hyperliquid_asset_index = idx as u32;
+                bn_info.hyperliquid_min_notional = 10.0;
+                shared_precisions.insert(symbol, bn_info.clone());
+            }
+        }
+
+        Ok(shared_precisions)
     }
 
     /// Scans both exchanges concurrently and computes ranked arbitrage opportunities
