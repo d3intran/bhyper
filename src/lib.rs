@@ -6,20 +6,25 @@ pub mod binance;
 pub mod config;
 pub mod hyperliquid;
 pub mod risk;
+pub mod state;
 pub mod strategy;
 pub mod telemetry;
 pub mod types;
+pub mod ws;
 
 pub use binance::BinanceFuturesClient;
 pub use config::Config;
 pub use hyperliquid::signing::HyperliquidSigner;
 pub use hyperliquid::HyperliquidClient;
 pub use risk::{RiskAssessment, RiskSentinel};
+pub use state::StateStore;
 pub use strategy::{
     ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TriggerDecision, TwoLegExecutor,
 };
 pub use telemetry::TelemetryNotifier;
 pub use types::{
-    ActiveArbitragePosition, AlignedQuantity, ArbitrageOpportunity, Exchange, FundingRateInfo,
-    OrderExecutionResult, OrderType, PositionSide, SymbolPrecisionInfo,
+    ActiveArbitragePosition, AlignedQuantity, ArbitrageOpportunity, Exchange, ExecutionMode,
+    FundingRateInfo, OrderExecutionResult, OrderType, PositionSide, SymbolPrecisionInfo,
+    TradeHistoryRecord,
 };
+pub use ws::{BinanceWsStream, HyperliquidWsStream, MarketDataCache};

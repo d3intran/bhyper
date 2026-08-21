@@ -2,19 +2,26 @@ mod binance;
 mod config;
 mod hyperliquid;
 mod risk;
+mod state;
 mod strategy;
 mod telemetry;
 mod types;
+mod ws;
 
 use anyhow::Result;
 use binance::BinanceFuturesClient;
 use clap::{Parser, Subcommand};
 use config::Config;
 use hyperliquid::HyperliquidClient;
+use parking_lot::Mutex;
+use state::StateStore;
+use std::sync::Arc;
 use strategy::{ArbitrageScanner, LotPrecisionMatcher, ProfitTriggerEngine, TwoLegExecutor};
 use telemetry::TelemetryNotifier;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
+use types::ExecutionMode;
+use ws::{BinanceWsStream, HyperliquidWsStream, MarketDataCache};
 
 #[derive(Parser)]
 #[command(name = "bhyper")]
@@ -32,9 +39,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 实时扫描并展示币安与 Hyperliquid 全币种资金费率利差排行
+    /// 实时扫描并展示币安与 Hyperliquid 全币种资金费率利差排行 (含多持仓周期净利测算)
     Scan {
         #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// 启动亚毫秒级实时 WebSocket 行情数据流与利差仪表盘
+    Stream {
+        #[arg(short, long, default_value_t = 15)]
         limit: usize,
     },
     /// 运行确定性盈利扳机评估器 (单次套利可行性、精确步长对齐与整点窗口校验)
@@ -53,12 +65,16 @@ enum Commands {
     },
     /// 检查并验证 Binance 与 Hyperliquid API 连接与账户权益
     Check,
+    /// 查看本地持久化存储的所有活跃套利持仓
+    Positions,
+    /// 跨所持仓对账审计 (自动核对 Binance / Hyperliquid 真实头寸与本地记录，检测孤儿腿)
+    Reconcile,
     /// 启动实时利差监控与 Telegram 预警守护循环
     Monitor {
-        #[arg(short, long, default_value_t = 15)]
+        #[arg(short, long, default_value_t = 10)]
         interval_secs: u64,
     },
-    /// 启动套利执行引擎 (支持安全模拟盘 Paper Trading 与实盘两腿对冲)
+    /// 启动套利执行引擎 (支持安全模拟盘 Paper Trading 与实盘成交校验两腿对冲)
     Trade {
         #[arg(short, long, default_value_t = 50.0)]
         margin_usd: f64,
@@ -66,7 +82,9 @@ enum Commands {
         dry_run: bool,
         #[arg(long, default_value_t = false)]
         live_danger: bool,
-        #[arg(short, long, default_value_t = 10)]
+        #[arg(long, default_value_t = false)]
+        taker_taker: bool,
+        #[arg(short, long, default_value_t = 5)]
         interval_secs: u64,
     },
     /// 紧急手动平仓指定币种在双边的所有对冲头寸
@@ -92,6 +110,7 @@ async fn main() -> Result<()> {
     };
 
     let config = Config::load_or_default(&config_path)?;
+    let state_store = Arc::new(Mutex::new(StateStore::load_or_create(None)?));
 
     match cli.command.unwrap_or(Commands::Scan { limit: 20 }) {
         Commands::Scan { limit } => {
@@ -121,6 +140,52 @@ async fn main() -> Result<()> {
                 elapsed.as_secs_f64() * 1000.0,
                 config.strategy.min_open_apr_pct
             );
+        }
+
+        Commands::Stream { limit } => {
+            println!("⚡ Starting Ultra Low-Latency WebSocket Streams (Binance + Hyperliquid)...");
+            let cache = MarketDataCache::new();
+
+            // Spawn live streams
+            BinanceWsStream::spawn(cache.clone());
+            let hl_ws_url = if config.hyperliquid.is_testnet {
+                Some("wss://api.hyperliquid-testnet.xyz/ws".to_string())
+            } else {
+                Some("wss://api.hyperliquid.xyz/ws".to_string())
+            };
+            HyperliquidWsStream::spawn(
+                cache.clone(),
+                hl_ws_url,
+                Some(config.hyperliquid.wallet_address.clone()),
+            );
+
+            println!("⏳ Waiting 3 seconds for initial orderbook / mark price stream warm-up...");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+            let scanner = ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
+                .with_cache(cache.clone());
+
+            let mut timer = tokio::time::interval(std::time::Duration::from_secs(2));
+            println!("🚀 Live Market Dashboard Running. Press Ctrl+C to stop.\n");
+
+            loop {
+                timer.tick().await;
+                if let Ok(opps) = scanner.scan_opportunities().await {
+                    print!("{esc}[2J{esc}[1;1H", esc = 27 as char); // clear terminal
+                    println!("⚡ [LIVE WS STREAM] {} | Health: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"), if cache.is_healthy() { "🟢 HEALTHY" } else { "🟡 SYNCING" });
+                    TelemetryNotifier::render_console_table(&opps, limit);
+                }
+            }
         }
 
         Commands::Trigger {
@@ -154,23 +219,23 @@ async fn main() -> Result<()> {
             let precisions = precisions_res.unwrap_or_default();
             let trigger_engine = ProfitTriggerEngine::default();
 
-            println!("\n{}", "=".repeat(125));
+            println!("\n{}", "=".repeat(130));
             println!(
                 "🎯 BHyper Deterministic Profit Trigger Analysis (With Exact Lot Precision Math)"
             );
-            println!("{}", "=".repeat(125));
+            println!("{}", "=".repeat(130));
             println!(
-                "{:<8} {:<8} {:<12} {:<12} {:<12} {:<15} {:<15} {:<30}",
+                "{:<8} {:<8} {:<12} {:<12} {:<14} {:<14} {:<15} {:<28}",
                 "Symbol",
                 "Trigger",
                 "1h Inc(bps)",
                 "Friction",
-                "Net PnL",
-                "Target USD",
+                "4h Net(bps)",
+                "4h Net USD",
                 "Aligned Qty",
                 "Status / Reason"
             );
-            println!("{}", "-".repeat(125));
+            println!("{}", "-".repeat(130));
 
             let mut passed_count = 0;
             for opp in opps.iter().take(20) {
@@ -195,22 +260,24 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| "🎯 ALL PROFIT LOCKS PASSED!".to_string());
 
                 println!(
-                    "{:<8} {:<8} {:>10.2} bps {:>10.2} bps {:>10.2} bps ${:<14.2} {:<15} {:<30}",
+                    "{:<8} {:<8} {:>10.2} bps {:>10.2} bps {:>12.2} bps ${:<13.4} {:<15} {:<28}",
                     decision.symbol,
                     trigger_badge,
                     decision.single_cycle_income_bps,
                     decision.total_friction_cost_bps,
-                    decision.net_expected_profit_bps,
-                    decision.target_notional_usd,
+                    decision.projected_4h_net_bps,
+                    decision.net_expected_profit_usd,
                     aligned_str,
                     reason_str
                 );
             }
-            println!("{}\n", "=".repeat(125));
+            println!("{}\n", "=".repeat(130));
             let secs_left = ProfitTriggerEngine::seconds_until_next_hour();
+            let is_bn = ProfitTriggerEngine::is_binance_settlement_hour();
             println!(
-                "⏱️  Seconds to next hourly settlement: {}s (Sniper window: 10s ~ 60s)",
-                secs_left
+                "⏱️  Seconds to next hourly settlement: {}s | Next hour is Binance 8h settlement: {}",
+                secs_left,
+                if is_bn { "✅ YES" } else { "❌ NO (HL 1h only)" }
             );
             println!("📊 Actionable Triggers: {} / 20 evaluated.\n", passed_count);
         }
@@ -325,6 +392,49 @@ async fn main() -> Result<()> {
             }
         }
 
+        Commands::Positions => {
+            let store = state_store.lock();
+            let positions = store.get_active_positions();
+            TelemetryNotifier::render_positions_table(&positions);
+        }
+
+        Commands::Reconcile => {
+            println!("🔍 Fetching live exchange positions from Binance and Hyperliquid for reconciliation...");
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+
+            let bn_pos = match bn_client.fetch_positions().await {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Could not fetch Binance positions: {:?}", e);
+                    Vec::new()
+                }
+            };
+
+            let hl_pos = match hl_client.fetch_clearinghouse_state().await {
+                Ok(s) => s.asset_positions,
+                Err(e) => {
+                    warn!("Could not fetch Hyperliquid positions: {:?}", e);
+                    Vec::new()
+                }
+            };
+
+            let report = {
+                let mut store = state_store.lock();
+                store.reconcile(&bn_pos, &hl_pos)
+            };
+
+            TelemetryNotifier::render_reconciliation_report(&report);
+        }
+
         Commands::Monitor { interval_secs } => {
             info!(
                 "Starting BHyper live monitoring loop (interval: {}s)...",
@@ -370,7 +480,8 @@ async fn main() -> Result<()> {
                                     • <b>Binance APR:</b> <code>{:.2}%</code>\n\
                                     • <b>Hyperliquid APR:</b> <code>{:.2}%</code>\n\
                                     • <b>推荐操作:</b> <code>Hyperliquid {} | Binance {}</code>\n\
-                                    • <b>预计时收益:</b> <code>{:.2} bps/h</code> (回本时间: <code>{:.1}h</code>)",
+                                    • <b>预计时收益:</b> <code>{:.2} bps/h</code> (回本时间: <code>{:.1}h</code>)\n\
+                                    • <b>4h净利预估:</b> <code>{:.2} bps</code>",
                                     best.symbol,
                                     best.net_spread_apr_pct,
                                     best.binance_apr_pct,
@@ -378,7 +489,8 @@ async fn main() -> Result<()> {
                                     best.hyperliquid_side,
                                     best.binance_side,
                                     best.est_hourly_return_bps,
-                                    best.est_break_even_hours
+                                    best.est_break_even_hours,
+                                    best.projected_4h_net_bps
                                 );
                                 let _ = notifier.send_alert(&alert_msg).await;
                             }
@@ -395,6 +507,7 @@ async fn main() -> Result<()> {
             margin_usd,
             dry_run,
             live_danger,
+            taker_taker,
             interval_secs,
         } => {
             let actual_dry_run = if live_danger {
@@ -407,6 +520,14 @@ async fn main() -> Result<()> {
                 );
                 true
             };
+
+            let execution_mode = if taker_taker {
+                ExecutionMode::TakerTaker
+            } else {
+                ExecutionMode::MakerTaker
+            };
+
+            info!("Execution mode set to: {}", execution_mode);
 
             let bn_client = BinanceFuturesClient::new(
                 config.binance.api_key.clone(),
@@ -434,10 +555,17 @@ async fn main() -> Result<()> {
                     config.hyperliquid.base_url.clone(),
                 ),
                 notifier.clone(),
+                state_store.clone(),
                 actual_dry_run,
+                execution_mode,
             );
 
-            let trigger_engine = ProfitTriggerEngine::default();
+            let trigger_engine = ProfitTriggerEngine::new(
+                config.strategy.min_open_apr_pct / 8760.0 * 100.0,
+                config.strategy.max_position_usd_per_pair,
+                config.strategy.maker_taker_mode,
+            );
+
             info!(
                 "Starting BHyper Automated Arbitrage Engine (Interval: {}s, Max Margin: ${:.2})...",
                 interval_secs, margin_usd
@@ -517,39 +645,54 @@ async fn main() -> Result<()> {
             );
             let notifier = TelemetryNotifier::new(config.telegram.clone());
 
-            let executor = TwoLegExecutor::new(bn_client, hl_client, notifier, false);
+            let executor = TwoLegExecutor::new(
+                bn_client,
+                hl_client,
+                notifier,
+                state_store.clone(),
+                false,
+                ExecutionMode::TakerTaker,
+            );
 
-            let fake_pos = types::ActiveArbitragePosition {
-                symbol: symbol.clone(),
-                binance_side: types::PositionSide::Long,
-                binance_qty: 0.0,
-                binance_entry_price: 0.0,
-                hyperliquid_side: types::PositionSide::Short,
-                hyperliquid_qty: 0.0,
-                hyperliquid_entry_price: 0.0,
-                nominal_value_usd: 0.0,
-                net_delta_usd: 0.0,
-                entry_spread_apr: 0.0,
-                current_spread_apr: 0.0,
-                accumulated_funding_usd: 0.0,
-                opened_at: chrono::Utc::now(),
-                last_updated_at: chrono::Utc::now(),
-                is_closed: false,
+            // Retrieve from state store if available
+            let (target_pos, default_prec) = {
+                let store = state_store.lock();
+                let pos = store.get_position(&symbol).cloned().unwrap_or_else(|| types::ActiveArbitragePosition {
+                    symbol: symbol.clone(),
+                    binance_side: types::PositionSide::Long,
+                    binance_qty: 0.0,
+                    binance_entry_price: 0.0,
+                    hyperliquid_side: types::PositionSide::Short,
+                    hyperliquid_qty: 0.0,
+                    hyperliquid_entry_price: 0.0,
+                    nominal_value_usd: 0.0,
+                    net_delta_usd: 0.0,
+                    entry_spread_apr: 0.0,
+                    current_spread_apr: 0.0,
+                    accumulated_funding_usd: 0.0,
+                    opened_at: chrono::Utc::now(),
+                    last_updated_at: chrono::Utc::now(),
+                    is_closed: false,
+                    closed_at: None,
+                    realized_pnl_usd: None,
+                });
+
+                let prec = types::SymbolPrecisionInfo {
+                    symbol: symbol.clone(),
+                    binance_step_size: 1.0,
+                    binance_tick_size: 0.001,
+                    binance_min_qty: 1.0,
+                    binance_min_notional: 5.0,
+                    hyperliquid_sz_decimals: 0,
+                    hyperliquid_asset_index: 0,
+                    hyperliquid_min_notional: 10.0,
+                };
+
+                (pos, prec)
             };
 
-            let default_prec = types::SymbolPrecisionInfo {
-                symbol: symbol.clone(),
-                binance_step_size: 1.0,
-                binance_tick_size: 0.001,
-                binance_min_qty: 1.0,
-                binance_min_notional: 5.0,
-                hyperliquid_sz_decimals: 0,
-                hyperliquid_asset_index: 0,
-                hyperliquid_min_notional: 10.0,
-            };
-
-            let _ = executor.execute_close(&fake_pos, &default_prec).await;
-            println!("✅ Unwind command dispatched for {}.", symbol);
+            let _ = executor.execute_close(&target_pos, &default_prec).await;
+            println!("✅ Unwind command dispatched and recorded for {}.", symbol);
         }
 
         Commands::Config => {

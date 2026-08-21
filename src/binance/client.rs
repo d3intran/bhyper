@@ -231,6 +231,9 @@ impl BinanceFuturesClient {
 
     /// Fetches account USDT balance & margin info
     pub async fn fetch_balances(&self) -> Result<Vec<BinanceBalanceItem>> {
+        if self.api_key.is_empty() || self.api_secret.is_empty() {
+            anyhow::bail!("Binance API key and secret are not configured");
+        }
         let query = format!("timestamp={}", Self::timestamp_ms());
         let signed_query = self.sign_query(&query);
         let url = format!("{}/fapi/v2/balance?{}", self.base_url, signed_query);
@@ -252,6 +255,9 @@ impl BinanceFuturesClient {
 
     /// Fetches active position risks across all contracts
     pub async fn fetch_positions(&self) -> Result<Vec<BinancePositionRiskItem>> {
+        if self.api_key.is_empty() || self.api_secret.is_empty() {
+            anyhow::bail!("Binance API key and secret are not configured");
+        }
         let query = format!("timestamp={}", Self::timestamp_ms());
         let signed_query = self.sign_query(&query);
         let url = format!("{}/fapi/v2/positionRisk?{}", self.base_url, signed_query);

@@ -22,6 +22,9 @@ path = "src/main.rs"
 # Async Runtime & Networking
 tokio = { version = "1.38", features = ["full"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+tokio-tungstenite = { version = "0.23", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+parking_lot = "0.12"
 
 # Serialization & Configuration
 serde = { version = "1.0", features = ["derive"] }

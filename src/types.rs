@@ -33,6 +33,23 @@ impl fmt::Display for PositionSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecutionMode {
+    /// Post-Only on Hyperliquid, verify fill, then Market on Binance
+    MakerTaker,
+    /// Dual aggressive IOC (Immediate-or-Cancel) on both exchanges
+    TakerTaker,
+}
+
+impl fmt::Display for ExecutionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExecutionMode::MakerTaker => write!(f, "Maker-Taker"),
+            ExecutionMode::TakerTaker => write!(f, "Taker-Taker (Dual IOC)"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum OrderType {
     Limit,
@@ -68,6 +85,10 @@ pub struct ArbitrageOpportunity {
     pub binance_side: PositionSide,
     pub est_hourly_return_bps: f64,
     pub est_break_even_hours: f64,
+    pub is_binance_settlement_next: bool,
+    pub projected_1h_net_bps: f64,
+    pub projected_4h_net_bps: f64,
+    pub projected_8h_net_bps: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +149,27 @@ pub struct ActiveArbitragePosition {
     pub opened_at: DateTime<Utc>,
     pub last_updated_at: DateTime<Utc>,
     pub is_closed: bool,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub realized_pnl_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeHistoryRecord {
+    pub id: String,
+    pub symbol: String,
+    pub action: String, // "OPEN", "CLOSE", "UNWIND", "EMERGENCY_UNWIND"
+    pub notional_usd: f64,
+    pub hl_side: PositionSide,
+    pub hl_qty: f64,
+    pub hl_price: f64,
+    pub bn_side: PositionSide,
+    pub bn_qty: f64,
+    pub bn_price: f64,
+    pub net_apr_at_action: f64,
+    pub fees_incurred_usd: f64,
+    pub realized_pnl_usd: f64,
+    pub timestamp: DateTime<Utc>,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,4 +180,14 @@ pub struct BalanceInfo {
     pub total_equity_usd: f64,
     pub available_margin_usd: f64,
     pub margin_usage_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReconciliationReport {
+    pub is_consistent: bool,
+    pub active_pairs_count: usize,
+    pub orphaned_binance_positions: Vec<String>,
+    pub orphaned_hyperliquid_positions: Vec<String>,
+    pub delta_discrepancies: Vec<(String, f64)>, // (Symbol, Discrepancy USD)
+    pub warnings: Vec<String>,
 }

@@ -1,13 +1,16 @@
 use crate::binance::BinanceFuturesClient;
 use crate::hyperliquid::HyperliquidClient;
 use crate::types::{ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo};
+use crate::ws::MarketDataCache;
 use anyhow::Result;
+use chrono::{Timelike, Utc};
 use std::collections::HashMap;
 
 pub struct ArbitrageScanner {
     binance: BinanceFuturesClient,
     hyperliquid: HyperliquidClient,
     roundtrip_cost_bps: f64,
+    cache: Option<MarketDataCache>,
 }
 
 impl ArbitrageScanner {
@@ -23,7 +26,13 @@ impl ArbitrageScanner {
             binance,
             hyperliquid,
             roundtrip_cost_bps: cost_bps,
+            cache: None,
         }
+    }
+
+    pub fn with_cache(mut self, cache: MarketDataCache) -> Self {
+        self.cache = Some(cache);
+        self
     }
 
     /// 获取两所所有共同支持交易对的完整精度与元数据信息 (StepSize, SzDecimals, AssetIndex, MinNotional)
@@ -51,8 +60,18 @@ impl ArbitrageScanner {
         Ok(shared_precisions)
     }
 
-    /// Scans both exchanges concurrently and computes ranked arbitrage opportunities
+    /// 扫描套利机会：优先从高频 WebSocket 内存缓存计算，降级从 REST 并发拉取
     pub async fn scan_opportunities(&self) -> Result<Vec<ArbitrageOpportunity>> {
+        if let Some(ref cache) = self.cache {
+            if cache.is_healthy() {
+                let cached_opps = cache.compute_opportunities(self.roundtrip_cost_bps);
+                if !cached_opps.is_empty() {
+                    return Ok(cached_opps);
+                }
+            }
+        }
+
+        // Fallback to REST API
         let (bn_res, hl_res) = tokio::join!(
             self.binance.fetch_all_funding_rates(),
             self.hyperliquid.fetch_all_funding_rates()
@@ -65,6 +84,12 @@ impl ArbitrageScanner {
         for item in bn_rates {
             bn_map.insert(item.symbol.to_uppercase(), item);
         }
+
+        let now = Utc::now();
+        let minute = now.minute();
+        let hour = now.hour();
+        let is_bn_settlement_next = (minute >= 50 && (hour == 7 || hour == 15 || hour == 23))
+            || (minute <= 10 && (hour == 8 || hour == 16 || hour == 0));
 
         let mut opportunities = Vec::new();
 
@@ -92,6 +117,34 @@ impl ArbitrageScanner {
                     9999.0
                 };
 
+                // Projected multi-horizon cashflows
+                let hl_1h_rate_bps = hl_item.funding_rate * 10_000.0;
+                let bn_8h_rate_bps = bn_item.funding_rate * 10_000.0;
+
+                let hl_1h_cashflow = match hl_side {
+                    PositionSide::Short => hl_1h_rate_bps,
+                    PositionSide::Long => -hl_1h_rate_bps,
+                };
+                let bn_8h_cashflow = match bn_side {
+                    PositionSide::Short => bn_8h_rate_bps,
+                    PositionSide::Long => -bn_8h_rate_bps,
+                };
+
+                let proj_1h = if is_bn_settlement_next {
+                    hl_1h_cashflow + bn_8h_cashflow - self.roundtrip_cost_bps
+                } else {
+                    hl_1h_cashflow - self.roundtrip_cost_bps
+                };
+
+                let proj_4h = (hl_1h_cashflow * 4.0)
+                    + (if is_bn_settlement_next {
+                        bn_8h_cashflow
+                    } else {
+                        0.0
+                    })
+                    - self.roundtrip_cost_bps;
+                let proj_8h = (hl_1h_cashflow * 8.0) + bn_8h_cashflow - self.roundtrip_cost_bps;
+
                 opportunities.push(ArbitrageOpportunity {
                     symbol,
                     binance_mark_price: bn_item.mark_price,
@@ -106,6 +159,10 @@ impl ArbitrageScanner {
                     binance_side: bn_side,
                     est_hourly_return_bps: hourly_spread_bps,
                     est_break_even_hours: break_even_hours,
+                    is_binance_settlement_next: is_bn_settlement_next,
+                    projected_1h_net_bps: proj_1h,
+                    projected_4h_net_bps: proj_4h,
+                    projected_8h_net_bps: proj_8h,
                 });
             }
         }

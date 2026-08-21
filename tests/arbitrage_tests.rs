@@ -1,8 +1,14 @@
 use bhyper::hyperliquid::signing::{
     ExchangeAction, HyperliquidSigner, LimitWire, OrderTypeWire, OrderWire,
 };
+use bhyper::state::StateStore;
 use bhyper::strategy::{LotPrecisionMatcher, ProfitTriggerEngine};
-use bhyper::types::{ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo};
+use bhyper::types::{
+    ActiveArbitragePosition, ArbitrageOpportunity, Exchange, FundingRateInfo, PositionSide,
+    SymbolPrecisionInfo,
+};
+use bhyper::ws::MarketDataCache;
+use chrono::Utc;
 
 #[test]
 fn test_apr_normalization_math() {
@@ -89,6 +95,10 @@ fn test_trigger_engine_with_precision_lock() {
         binance_side: PositionSide::Long,
         est_hourly_return_bps: 9.44,
         est_break_even_hours: 1.1,
+        is_binance_settlement_next: false,
+        projected_1h_net_bps: 8.3,
+        projected_4h_net_bps: 26.0,
+        projected_8h_net_bps: 63.8,
     };
 
     let prec = SymbolPrecisionInfo {
@@ -105,8 +115,87 @@ fn test_trigger_engine_with_precision_lock() {
     let decision = engine.evaluate_opportunity(&opp, 50.0, true, Some(&prec));
     assert!(decision.should_open);
     assert!(decision.net_expected_profit_bps > 0.0);
+    assert!(decision.net_expected_profit_usd > 0.0);
     assert!(decision.aligned_quantity.is_some());
     assert!(decision.target_notional_usd >= 12.0 && decision.target_notional_usd <= 50.0);
+}
+
+#[test]
+fn test_state_store_lifecycle_and_persistence() {
+    let tmp_dir = std::env::temp_dir().join(format!("bhyper_test_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+    let state_file = tmp_dir.join("state.json");
+
+    let mut store = StateStore::load_or_create(Some(state_file.clone())).unwrap();
+
+    let pos = ActiveArbitragePosition {
+        symbol: "BTC".to_string(),
+        binance_side: PositionSide::Short,
+        binance_qty: 0.001,
+        binance_entry_price: 60000.0,
+        hyperliquid_side: PositionSide::Long,
+        hyperliquid_qty: 0.001,
+        hyperliquid_entry_price: 60000.0,
+        nominal_value_usd: 60.0,
+        net_delta_usd: 0.0,
+        entry_spread_apr: 45.0,
+        current_spread_apr: 45.0,
+        accumulated_funding_usd: 0.05,
+        opened_at: Utc::now(),
+        last_updated_at: Utc::now(),
+        is_closed: false,
+        closed_at: None,
+        realized_pnl_usd: None,
+    };
+
+    store.upsert_position(pos).unwrap();
+    assert_eq!(store.get_active_positions().len(), 1);
+
+    // Reopen store from file
+    let mut reopened_store = StateStore::load_or_create(Some(state_file.clone())).unwrap();
+    assert_eq!(reopened_store.get_active_positions().len(), 1);
+
+    // Close position
+    let closed = reopened_store
+        .close_position("BTC", 60100.0, 60100.0, 0.45, "Test close")
+        .unwrap();
+    assert!(closed.is_some());
+    assert_eq!(reopened_store.get_active_positions().len(), 0);
+
+    let _ = std::fs::remove_dir_all(tmp_dir);
+}
+
+#[test]
+fn test_market_cache_opportunity_computation() {
+    let cache = MarketDataCache::new();
+
+    cache.update_binance_rates(vec![FundingRateInfo {
+        symbol: "ETH".to_string(),
+        exchange: Exchange::Binance,
+        mark_price: 3000.0,
+        index_price: 3000.0,
+        funding_rate: 0.0001,
+        funding_interval_hours: 8.0,
+        annualized_apr_pct: 10.95,
+        next_funding_time: Some(Utc::now()),
+    }]);
+
+    cache.update_hyperliquid_rates(vec![FundingRateInfo {
+        symbol: "ETH".to_string(),
+        exchange: Exchange::Hyperliquid,
+        mark_price: 3000.0,
+        index_price: 3000.0,
+        funding_rate: 0.0001, // 1h rate = 0.01% -> 87.6% APR
+        funding_interval_hours: 1.0,
+        annualized_apr_pct: 87.6,
+        next_funding_time: Some(Utc::now()),
+    }]);
+
+    let opps = cache.compute_opportunities(12.0);
+    assert_eq!(opps.len(), 1);
+    assert_eq!(opps[0].symbol, "ETH");
+    assert!(opps[0].net_spread_apr_pct > 70.0);
+    assert_eq!(opps[0].hyperliquid_side, PositionSide::Short);
+    assert_eq!(opps[0].binance_side, PositionSide::Long);
 }
 
 #[test]

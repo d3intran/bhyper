@@ -1,5 +1,8 @@
 use crate::config::TelegramConfig;
-use crate::types::{AlignedQuantity, ArbitrageOpportunity, SymbolPrecisionInfo};
+use crate::types::{
+    ActiveArbitragePosition, AlignedQuantity, ArbitrageOpportunity, ReconciliationReport,
+    SymbolPrecisionInfo,
+};
 use anyhow::Result;
 use serde_json::json;
 
@@ -28,7 +31,7 @@ impl TelemetryNotifier {
         };
         let chat_id = match self.config.chat_id {
             Some(id) => id,
-            None => return Ok(()),
+            _ => return Ok(()),
         };
 
         let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
@@ -44,11 +47,11 @@ impl TelemetryNotifier {
 
     /// Prints a formatted ASCII table of top arbitrage opportunities
     pub fn render_console_table(opportunities: &[ArbitrageOpportunity], top_n: usize) {
-        println!("\n{}", "=".repeat(110));
-        println!("🚀 BHyper Multi-Asset Cross-Exchange Funding Arbitrage Matrix (Top Ranked)");
-        println!("{}", "=".repeat(110));
+        println!("\n{}", "=".repeat(128));
+        println!("🚀 BHyper Multi-Asset Cross-Exchange Funding Arbitrage Matrix (Multi-Horizon Projections)");
+        println!("{}", "=".repeat(128));
         println!(
-            "{:<8} {:<10} {:<10} {:<12} {:<12} {:<12} {:<15} {:<12} {:<10}",
+            "{:<8} {:<9} {:<9} {:<11} {:<11} {:<11} {:<14} {:<9} {:<10} {:<10} {:<10}",
             "Symbol",
             "BN Price",
             "HL Price",
@@ -56,10 +59,12 @@ impl TelemetryNotifier {
             "HL APR(1h)",
             "Net Spread",
             "Action",
-            "1h PnL (bps)",
-            "Break-Even"
+            "BreakEven",
+            "1h Net(bps)",
+            "4h Net(bps)",
+            "8h Net(bps)"
         );
-        println!("{}", "-".repeat(110));
+        println!("{}", "-".repeat(128));
 
         for opp in opportunities.iter().take(top_n) {
             let action_str = format!("HL:{} | BN:{}", opp.hyperliquid_side, opp.binance_side);
@@ -70,7 +75,7 @@ impl TelemetryNotifier {
             };
 
             println!(
-                "{:<8} ${:<9.3} ${:<9.3} {:>10.2}% {:>10.2}% {:>10.2}% {:<15} {:>10.2} bps {:>10}",
+                "{:<8} ${:<8.3} ${:<8.3} {:>9.2}% {:>9.2}% {:>9.2}% {:<14} {:>9} {:>10.2} {:>10.2} {:>10.2}",
                 opp.symbol,
                 opp.binance_mark_price,
                 opp.hyperliquid_mark_price,
@@ -78,11 +83,13 @@ impl TelemetryNotifier {
                 opp.hyperliquid_apr_pct,
                 opp.net_spread_apr_pct,
                 action_str,
-                opp.est_hourly_return_bps,
-                be_str
+                be_str,
+                opp.projected_1h_net_bps,
+                opp.projected_4h_net_bps,
+                opp.projected_8h_net_bps
             );
         }
-        println!("{}\n", "=".repeat(110));
+        println!("{}\n", "=".repeat(128));
     }
 
     /// Prints a formatted ASCII table for precision matching analysis
@@ -131,5 +138,58 @@ impl TelemetryNotifier {
             );
         }
         println!("{}\n", "=".repeat(115));
+    }
+
+    /// Prints active positions table
+    pub fn render_positions_table(positions: &[ActiveArbitragePosition]) {
+        println!("\n{}", "=".repeat(110));
+        println!("💼 BHyper Active Managed Arbitrage Positions");
+        println!("{}", "=".repeat(110));
+        if positions.is_empty() {
+            println!("  (No active arbitrage positions found in local store)");
+        } else {
+            println!(
+                "{:<8} {:<12} {:<12} {:<12} {:<12} {:<12} {:<20}",
+                "Symbol", "Notional", "HL Side/Qty", "BN Side/Qty", "Entry APR", "Current APR", "Opened At"
+            );
+            println!("{}", "-".repeat(110));
+            for p in positions {
+                let hl_str = format!("{} {:.4}", p.hyperliquid_side, p.hyperliquid_qty);
+                let bn_str = format!("{} {:.4}", p.binance_side, p.binance_qty);
+                println!(
+                    "{:<8} ${:<11.2} {:<12} {:<12} {:>10.2}% {:>10.2}% {:<20}",
+                    p.symbol,
+                    p.nominal_value_usd,
+                    hl_str,
+                    bn_str,
+                    p.entry_spread_apr,
+                    p.current_spread_apr,
+                    p.opened_at.format("%Y-%m-%d %H:%M:%S")
+                );
+            }
+        }
+        println!("{}\n", "=".repeat(110));
+    }
+
+    /// Prints reconciliation report
+    pub fn render_reconciliation_report(report: &ReconciliationReport) {
+        println!("\n{}", "=".repeat(90));
+        println!("🔍 BHyper Cross-Exchange Reconciliation & Health Audit");
+        println!("{}", "=".repeat(90));
+        println!("• Consistent State: {}", if report.is_consistent { "✅ YES" } else { "⚠️ DISCREPANCY DETECTED" });
+        println!("• Active Matched Pairs: {}", report.active_pairs_count);
+        if !report.orphaned_binance_positions.is_empty() {
+            println!("• ⚠️ Orphaned Binance Positions: {:?}", report.orphaned_binance_positions);
+        }
+        if !report.orphaned_hyperliquid_positions.is_empty() {
+            println!("• ⚠️ Orphaned Hyperliquid Positions: {:?}", report.orphaned_hyperliquid_positions);
+        }
+        if !report.delta_discrepancies.is_empty() {
+            println!("• ⚠️ Delta Discrepancies: {:?}", report.delta_discrepancies);
+        }
+        for w in &report.warnings {
+            println!("  - {}", w);
+        }
+        println!("{}\n", "=".repeat(90));
     }
 }
