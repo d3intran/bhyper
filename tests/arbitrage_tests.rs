@@ -40,7 +40,10 @@ fn test_precision_matcher_perfect_alignment() {
     assert_eq!(aligned.delta_imbalance_usd, 0.0);
     assert_eq!(aligned.delta_imbalance_pct, 0.0);
     assert!(aligned.notional_usd >= 12.0 && aligned.notional_usd <= 45.0);
-    assert_eq!(aligned.binance_formatted_qty, aligned.hyperliquid_formatted_qty);
+    assert_eq!(
+        aligned.binance_formatted_qty,
+        aligned.hyperliquid_formatted_qty
+    );
 }
 
 #[test]
@@ -63,7 +66,10 @@ fn test_precision_matcher_rejection_for_insufficient_notional() {
         LotPrecisionMatcher::calculate_aligned_quantity("SOL", mark_price, target_usd, &prec);
 
     assert!(!aligned.is_aligned);
-    assert!(aligned.reject_reason.unwrap().contains("低于两所最小名义面值"));
+    assert!(aligned
+        .reject_reason
+        .unwrap()
+        .contains("低于两所最小名义面值"));
 }
 
 #[test]

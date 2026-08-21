@@ -260,6 +260,7 @@ impl HyperliquidClient {
     }
 
     /// 发送 L1 下单请求 (支持 Post-Only Maker, GTC Limit, IOC)
+    #[allow(clippy::too_many_arguments)]
     pub async fn place_order(
         &self,
         asset_index: u32,
@@ -308,12 +309,8 @@ impl HyperliquidClient {
         };
 
         let nonce = Self::timestamp_ms();
-        let signature = HyperliquidSigner::sign_l1_action(
-            &action,
-            nonce,
-            &self.private_key,
-            self.is_mainnet,
-        )?;
+        let signature =
+            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?;
 
         let payload = ExchangeRequestPayload {
             action,
@@ -353,12 +350,8 @@ impl HyperliquidClient {
         };
 
         let nonce = Self::timestamp_ms();
-        let signature = HyperliquidSigner::sign_l1_action(
-            &action,
-            nonce,
-            &self.private_key,
-            self.is_mainnet,
-        )?;
+        let signature =
+            HyperliquidSigner::sign_l1_action(&action, nonce, &self.private_key, self.is_mainnet)?;
 
         let payload = ExchangeRequestPayload {
             action,

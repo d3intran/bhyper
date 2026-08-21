@@ -155,7 +155,9 @@ async fn main() -> Result<()> {
             let trigger_engine = ProfitTriggerEngine::default();
 
             println!("\n{}", "=".repeat(125));
-            println!("🎯 BHyper Deterministic Profit Trigger Analysis (With Exact Lot Precision Math)");
+            println!(
+                "🎯 BHyper Deterministic Profit Trigger Analysis (With Exact Lot Precision Math)"
+            );
             println!("{}", "=".repeat(125));
             println!(
                 "{:<8} {:<8} {:<12} {:<12} {:<12} {:<15} {:<15} {:<30}",
@@ -173,12 +175,8 @@ async fn main() -> Result<()> {
             let mut passed_count = 0;
             for opp in opps.iter().take(20) {
                 let prec_info = precisions.get(&opp.symbol);
-                let decision = trigger_engine.evaluate_opportunity(
-                    opp,
-                    margin_usd,
-                    ignore_window,
-                    prec_info,
-                );
+                let decision =
+                    trigger_engine.evaluate_opportunity(opp, margin_usd, ignore_window, prec_info);
 
                 let trigger_badge = if decision.should_open {
                     passed_count += 1;
@@ -259,7 +257,8 @@ async fn main() -> Result<()> {
                 }
             }
 
-            precision_rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            precision_rows
+                .sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
             TelemetryNotifier::render_precision_table(&precision_rows, limit);
             println!(
@@ -402,7 +401,10 @@ async fn main() -> Result<()> {
                 warn!("⚠️ LIVE TRADING MODE ENABLED WITH REAL FUNDS!");
                 false
             } else {
-                info!("🧪 Dry-run simulation mode active (Safety paper trading: {}).", dry_run);
+                info!(
+                    "🧪 Dry-run simulation mode active (Safety paper trading: {}).",
+                    dry_run
+                );
                 true
             };
 
@@ -479,11 +481,18 @@ async fn main() -> Result<()> {
                         );
                         match executor.execute_open(opp, &decision, prec).await {
                             Ok(pos) => {
-                                info!("Successfully established arbitrage position on {}", pos.symbol);
+                                info!(
+                                    "Successfully established arbitrage position on {}",
+                                    pos.symbol
+                                );
                                 break;
                             }
                             Err(e) => {
-                                tracing::error!("Failed to execute trade on {}: {:?}", opp.symbol, e);
+                                tracing::error!(
+                                    "Failed to execute trade on {}: {:?}",
+                                    opp.symbol,
+                                    e
+                                );
                             }
                         }
                     }
@@ -492,7 +501,10 @@ async fn main() -> Result<()> {
         }
 
         Commands::Unwind { symbol } => {
-            info!("Emergency unwinding position for {} on both exchanges...", symbol);
+            info!(
+                "Emergency unwinding position for {} on both exchanges...",
+                symbol
+            );
             let bn_client = BinanceFuturesClient::new(
                 config.binance.api_key.clone(),
                 config.binance.api_secret.clone(),

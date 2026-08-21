@@ -20,10 +20,10 @@ pub struct TriggerDecision {
 
 #[derive(Debug, Clone)]
 pub struct ProfitTriggerEngine {
-    pub min_net_profit_bps: f64,        // 单次必须确保的最小净利润 (例如 3.5 bps = 0.035%)
-    pub max_basis_spread_bps: f64,      // 允许的最大基差倒挂 (例如 20 bps)
-    pub min_notional_usd: f64,          // 单笔最小名义价值 (例如 $12 满足两所限制)
-    pub max_notional_usd: f64,          // 单笔最大名义价值 (例如 $50 用于小资金)
+    pub min_net_profit_bps: f64, // 单次必须确保的最小净利润 (例如 3.5 bps = 0.035%)
+    pub max_basis_spread_bps: f64, // 允许的最大基差倒挂 (例如 20 bps)
+    pub min_notional_usd: f64,   // 单笔最小名义价值 (例如 $12 满足两所限制)
+    pub max_notional_usd: f64,   // 单笔最大名义价值 (例如 $50 用于小资金)
     pub sniper_window_secs: (u32, u32), // 狙击窗口: (最小秒数 10s, 最大秒数 60s)
 }
 

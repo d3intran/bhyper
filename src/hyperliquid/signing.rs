@@ -78,11 +78,11 @@ impl HyperliquidSigner {
         let verifying_contract_bytes = [0u8; 32]; // address(0)
 
         let mut hasher = Keccak256::new();
-        hasher.update(&domain_typehash);
-        hasher.update(&name_hash);
-        hasher.update(&version_hash);
-        hasher.update(&chain_id_bytes);
-        hasher.update(&verifying_contract_bytes);
+        hasher.update(domain_typehash);
+        hasher.update(name_hash);
+        hasher.update(version_hash);
+        hasher.update(chain_id_bytes);
+        hasher.update(verifying_contract_bytes);
 
         let result = hasher.finalize();
         let mut out = [0u8; 32];
@@ -131,21 +131,22 @@ impl HyperliquidSigner {
         let source_hash = Keccak256::digest(source_str.as_bytes());
 
         let mut agent_hasher = Keccak256::new();
-        agent_hasher.update(&agent_typehash);
-        agent_hasher.update(&source_hash);
-        agent_hasher.update(&connection_id);
+        agent_hasher.update(agent_typehash);
+        agent_hasher.update(source_hash);
+        agent_hasher.update(connection_id);
         let agent_struct_hash = agent_hasher.finalize();
 
         // EIP-712 digest: keccak256("\x19\x01" + domain_separator + struct_hash)
         let mut digest_hasher = Keccak256::new();
-        digest_hasher.update(&[0x19, 0x01]);
-        digest_hasher.update(&domain_separator);
-        digest_hasher.update(&agent_struct_hash);
+        digest_hasher.update([0x19, 0x01]);
+        digest_hasher.update(domain_separator);
+        digest_hasher.update(agent_struct_hash);
         let digest = digest_hasher.finalize();
 
-        let (sig, recid): (Signature, RecoveryId) = signing_key
-            .sign_prehash_recoverable(&digest)
-            .context("Failed to sign prehash with secp256k1")?;
+        let (sig, recid): (Signature, RecoveryId) =
+            signing_key
+                .sign_prehash_recoverable(&digest)
+                .context("Failed to sign prehash with secp256k1")?;
 
         let r_bytes = &sig.to_bytes()[..32];
         let s_bytes = &sig.to_bytes()[32..64];

@@ -3,8 +3,7 @@ use crate::hyperliquid::HyperliquidClient;
 use crate::strategy::trigger::TriggerDecision;
 use crate::telemetry::TelemetryNotifier;
 use crate::types::{
-    ActiveArbitragePosition, ArbitrageOpportunity, PositionSide,
-    SymbolPrecisionInfo,
+    ActiveArbitragePosition, ArbitrageOpportunity, PositionSide, SymbolPrecisionInfo,
 };
 use anyhow::{bail, Result};
 use chrono::Utc;
@@ -261,7 +260,10 @@ impl TwoLegExecutor {
             return Ok(());
         }
 
-        info!("⚡ [LIVE] Unwinding arbitrage pair on {}...", position.symbol);
+        info!(
+            "⚡ [LIVE] Unwinding arbitrage pair on {}...",
+            position.symbol
+        );
 
         // Close Binance
         let bn_close_side = match position.binance_side {

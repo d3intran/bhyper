@@ -91,11 +91,20 @@ impl TelemetryNotifier {
         top_n: usize,
     ) {
         println!("\n{}", "=".repeat(115));
-        println!("📐 BHyper Small-Capital Lot Precision & Alignment Matrix ($50 Target Allocation)");
+        println!(
+            "📐 BHyper Small-Capital Lot Precision & Alignment Matrix ($50 Target Allocation)"
+        );
         println!("{}", "=".repeat(115));
         println!(
             "{:<8} {:<10} {:<12} {:<10} {:<12} {:<12} {:<10} {:<30}",
-            "Symbol", "Price", "BN StepSize", "HL Decs", "BN Formatted", "HL Formatted", "Notional", "Status / Notes"
+            "Symbol",
+            "Price",
+            "BN StepSize",
+            "HL Decs",
+            "BN Formatted",
+            "HL Formatted",
+            "Notional",
+            "Status / Notes"
         );
         println!("{}", "-".repeat(115));
 
