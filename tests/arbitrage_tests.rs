@@ -522,7 +522,10 @@ fn test_rate_manipulation_divergence_lock() {
 
     let decision = engine.evaluate_opportunity(&manipulated_opp, 50.0, true, Some(&prec));
     assert!(!decision.should_open);
-    assert!(decision.reject_reason.unwrap().contains("标记价与预言机偏离"));
+    assert!(decision
+        .reject_reason
+        .unwrap()
+        .contains("标记价与预言机偏离"));
 }
 
 #[test]
@@ -542,7 +545,7 @@ fn test_cross_exchange_margin_health_and_rebalance_advisory() {
         account_value_usd: 10.0, // Depleted margin!
         total_margin_used_usd: 8.5,
         free_margin_usd: 1.5,
-        margin_utilization_pct: 85.0, // High utilization!
+        margin_utilization_pct: 85.0,       // High utilization!
         min_liquidation_distance_pct: 12.0, // Close to liq!
         is_healthy: false,
     };
@@ -551,7 +554,9 @@ fn test_cross_exchange_margin_health_and_rebalance_advisory() {
     assert!(assessment.rebalance_required);
     assert_eq!(assessment.total_equity_usd, 100.0);
     assert_eq!(assessment.suggested_transfer_usd, 40.0);
-    assert!(assessment.transfer_direction.contains("Binance -> Hyperliquid"));
+    assert!(assessment
+        .transfer_direction
+        .contains("Binance -> Hyperliquid"));
 
     // Check risk sentinel recognizes critical margin and liquidation threat
     let sentinel = bhyper::risk::RiskSentinel::new(bhyper::config::RiskConfig {
@@ -562,7 +567,11 @@ fn test_cross_exchange_margin_health_and_rebalance_advisory() {
 
     let exit_signal = sentinel.evaluate_margin_health(&assessment);
     match exit_signal {
-        bhyper::risk::ExitSignal::MarginCritical { exchange, utilization_pct, .. } => {
+        bhyper::risk::ExitSignal::MarginCritical {
+            exchange,
+            utilization_pct,
+            ..
+        } => {
             assert_eq!(exchange, "Hyperliquid");
             assert_eq!(utilization_pct, 85.0);
         }
@@ -661,7 +670,12 @@ fn test_paper_execution_engine_open_accrual_and_close() {
 
     // 1. Simulate Open
     let pos = engine
-        .simulate_open(&opp, &decision, &prec, bhyper::types::ExecutionMode::MakerTaker)
+        .simulate_open(
+            &opp,
+            &decision,
+            &prec,
+            bhyper::types::ExecutionMode::MakerTaker,
+        )
         .unwrap();
     assert_eq!(pos.symbol, "SUI");
     assert_eq!(engine.store.state.active_positions.len(), 1);
@@ -671,7 +685,9 @@ fn test_paper_execution_engine_open_accrual_and_close() {
     if let Some(p) = engine.store.state.active_positions.get_mut("SUI") {
         p.last_hl_funding_time = Utc::now() - chrono::Duration::minutes(65);
     }
-    let funding_events = engine.accrue_funding_payments(&[opp.clone()]).unwrap();
+    let funding_events = engine
+        .accrue_funding_payments(std::slice::from_ref(&opp))
+        .unwrap();
     assert_eq!(funding_events.len(), 1);
     assert!(funding_events[0].funding_payment_usd > 0.0);
 
@@ -792,7 +808,7 @@ fn test_trade_journal_persistence_and_filtering() {
 
 #[test]
 fn test_performance_analytics_pnl_attribution_and_summary() {
-    use bhyper::journal::{PerformanceAnalytics, TradeCloseFillEvent, JournalEntry};
+    use bhyper::journal::{JournalEntry, PerformanceAnalytics, TradeCloseFillEvent};
 
     let entries = vec![
         JournalEntry::CloseFill(TradeCloseFillEvent {
@@ -850,4 +866,3 @@ fn test_performance_analytics_pnl_attribution_and_summary() {
     assert!(md_report.contains("Executive Summary"));
     assert!(md_report.contains("Win Rate"));
 }
-

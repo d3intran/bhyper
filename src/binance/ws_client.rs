@@ -23,8 +23,10 @@ pub struct BinanceWsApiClient {
 
 impl BinanceWsApiClient {
     pub fn spawn(api_key: String, api_secret: String, ws_url_opt: Option<String>) -> Arc<Self> {
-        let ws_url = ws_url_opt.unwrap_or_else(|| "wss://ws-fapi.binance.com/ws-fapi/v1".to_string());
-        let (request_tx, mut request_rx) = mpsc::unbounded_channel::<tokio_tungstenite::tungstenite::Message>();
+        let ws_url =
+            ws_url_opt.unwrap_or_else(|| "wss://ws-fapi.binance.com/ws-fapi/v1".to_string());
+        let (request_tx, mut request_rx) =
+            mpsc::unbounded_channel::<tokio_tungstenite::tungstenite::Message>();
         let pending_requests = Arc::new(Mutex::new(FxHashMap::default()));
 
         let hmac_key = if !api_secret.trim().is_empty() {
@@ -114,7 +116,10 @@ impl BinanceWsApiClient {
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to connect to Binance WS API: {:?}. Retrying in 5s...", e);
+                        warn!(
+                            "Failed to connect to Binance WS API: {:?}. Retrying in 5s...",
+                            e
+                        );
                     }
                 }
                 tokio::time::sleep(Duration::from_secs(5)).await;
@@ -151,7 +156,10 @@ impl BinanceWsApiClient {
             format!("{}USDT", symbol)
         };
 
-        let req_id = format!("bhyper-ws-{}", self.req_counter.fetch_add(1, Ordering::Relaxed));
+        let req_id = format!(
+            "bhyper-ws-{}",
+            self.req_counter.fetch_add(1, Ordering::Relaxed)
+        );
         let ts = Self::timestamp_ms();
 
         // Build canonical query payload for HMAC signature

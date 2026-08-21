@@ -180,8 +180,8 @@ impl TradeJournal {
             .open(&self.path)
             .with_context(|| format!("Failed to open trade journal at {}", self.path.display()))?;
 
-        let json_line = serde_json::to_string(entry)
-            .context("Failed to serialize journal entry to JSON")?;
+        let json_line =
+            serde_json::to_string(entry).context("Failed to serialize journal entry to JSON")?;
         writeln!(file, "{}", json_line)
             .with_context(|| format!("Failed to write entry to {}", self.path.display()))?;
         Ok(())
@@ -298,7 +298,10 @@ pub struct PerformanceSummary {
 pub struct PerformanceAnalytics;
 
 impl PerformanceAnalytics {
-    pub fn compute_from_entries(entries: &[JournalEntry], initial_capital_usd: f64) -> PerformanceSummary {
+    pub fn compute_from_entries(
+        entries: &[JournalEntry],
+        initial_capital_usd: f64,
+    ) -> PerformanceSummary {
         let mut summary = PerformanceSummary::default();
         let mut symbol_map: HashMap<String, SymbolPerformance> = HashMap::new();
         let mut total_wins_usd = 0.0;
@@ -346,10 +349,13 @@ impl PerformanceAnalytics {
                         max_dd_pct = dd_pct;
                     }
 
-                    let sym_perf = symbol_map.entry(c.symbol.clone()).or_insert_with(|| SymbolPerformance {
-                        symbol: c.symbol.clone(),
-                        ..Default::default()
-                    });
+                    let sym_perf =
+                        symbol_map
+                            .entry(c.symbol.clone())
+                            .or_insert_with(|| SymbolPerformance {
+                                symbol: c.symbol.clone(),
+                                ..Default::default()
+                            });
                     sym_perf.total_trades += 1;
                     if c.net_realized_pnl_usd >= 0.0 {
                         sym_perf.winning_trades += 1;
@@ -367,8 +373,10 @@ impl PerformanceAnalytics {
         }
 
         if summary.total_trades > 0 {
-            summary.win_rate_pct = (summary.winning_trades as f64 / summary.total_trades as f64) * 100.0;
-            summary.avg_net_profit_per_trade_usd = summary.net_realized_pnl_usd / summary.total_trades as f64;
+            summary.win_rate_pct =
+                (summary.winning_trades as f64 / summary.total_trades as f64) * 100.0;
+            summary.avg_net_profit_per_trade_usd =
+                summary.net_realized_pnl_usd / summary.total_trades as f64;
             summary.profit_factor = if total_losses_usd > 0.0 {
                 total_wins_usd / total_losses_usd
             } else if total_wins_usd > 0.0 {
@@ -377,7 +385,8 @@ impl PerformanceAnalytics {
                 1.0
             };
             if initial_capital_usd > 0.0 {
-                summary.net_return_on_capital_pct = (summary.net_realized_pnl_usd / initial_capital_usd) * 100.0;
+                summary.net_return_on_capital_pct =
+                    (summary.net_realized_pnl_usd / initial_capital_usd) * 100.0;
             }
             summary.max_drawdown_usd = max_dd_usd;
             summary.max_drawdown_pct = max_dd_pct;
@@ -396,33 +405,48 @@ impl PerformanceAnalytics {
         println!("{}", "=".repeat(105));
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Total Closed Trades:", format!("{}", summary.total_trades),
-            "• Win Rate:", format!("{:.1}% ({}/{} wins)", summary.win_rate_pct, summary.winning_trades, summary.total_trades)
+            "• Total Closed Trades:",
+            format!("{}", summary.total_trades),
+            "• Win Rate:",
+            format!(
+                "{:.1}% ({}/{} wins)",
+                summary.win_rate_pct, summary.winning_trades, summary.total_trades
+            )
         );
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Net Realized PnL:", format!("${:.4}", summary.net_realized_pnl_usd),
-            "• Profit Factor:", format!("{:.2}", summary.profit_factor)
+            "• Net Realized PnL:",
+            format!("${:.4}", summary.net_realized_pnl_usd),
+            "• Profit Factor:",
+            format!("{:.2}", summary.profit_factor)
         );
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Gross Funding Income:", format!("${:.4}", summary.total_gross_funding_usd),
-            "• Gross Basis PnL:", format!("${:.4}", summary.total_basis_pnl_usd)
+            "• Gross Funding Income:",
+            format!("${:.4}", summary.total_gross_funding_usd),
+            "• Gross Basis PnL:",
+            format!("${:.4}", summary.total_basis_pnl_usd)
         );
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Total Trading Fees Paid:", format!("${:.4}", summary.total_fees_paid_usd),
-            "• Return on Capital (ROC):", format!("{:.2}%", summary.net_return_on_capital_pct)
+            "• Total Trading Fees Paid:",
+            format!("${:.4}", summary.total_fees_paid_usd),
+            "• Return on Capital (ROC):",
+            format!("{:.2}%", summary.net_return_on_capital_pct)
         );
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Max Drawdown ($):", format!("${:.4}", summary.max_drawdown_usd),
-            "• Max Drawdown (%):", format!("{:.2}%", summary.max_drawdown_pct)
+            "• Max Drawdown ($):",
+            format!("${:.4}", summary.max_drawdown_usd),
+            "• Max Drawdown (%):",
+            format!("{:.2}%", summary.max_drawdown_pct)
         );
         println!(
             "{:<32} {:<20} {:<32} {:<20}",
-            "• Avg Return / Trade:", format!("${:.4}", summary.avg_net_profit_per_trade_usd),
-            "• Funding Settlement Ticks:", format!("{}", summary.total_funding_settlement_events)
+            "• Avg Return / Trade:",
+            format!("${:.4}", summary.avg_net_profit_per_trade_usd),
+            "• Funding Settlement Ticks:",
+            format!("{}", summary.total_funding_settlement_events)
         );
 
         if !summary.symbol_breakdown.is_empty() {
@@ -431,7 +455,13 @@ impl PerformanceAnalytics {
             println!("{}", "-".repeat(105));
             println!(
                 "{:<10} {:<8} {:<10} {:<15} {:<15} {:<15} {:<15}",
-                "Symbol", "Trades", "Win Rate", "Gross Funding", "Basis PnL", "Total Fees", "Net PnL"
+                "Symbol",
+                "Trades",
+                "Win Rate",
+                "Gross Funding",
+                "Basis PnL",
+                "Total Fees",
+                "Net PnL"
             );
             println!("{}", "-".repeat(105));
 
@@ -443,7 +473,13 @@ impl PerformanceAnalytics {
                 };
                 println!(
                     "{:<10} {:<8} {:>8.1}% ${:>13.4} ${:>13.4} ${:>13.4} ${:>13.4}",
-                    s.symbol, s.total_trades, win_rate, s.gross_funding_usd, s.gross_basis_pnl_usd, s.total_fees_usd, s.net_pnl_usd
+                    s.symbol,
+                    s.total_trades,
+                    win_rate,
+                    s.gross_funding_usd,
+                    s.gross_basis_pnl_usd,
+                    s.total_fees_usd,
+                    s.net_pnl_usd
                 );
             }
         }
@@ -453,16 +489,40 @@ impl PerformanceAnalytics {
     pub fn render_markdown_report(summary: &PerformanceSummary) -> String {
         let mut md = String::with_capacity(2048);
         md.push_str("# 📊 BHyper Quantitative Performance & Trade Journal Review\n\n");
-        md.push_str(&format!("*Generated at: `{}` UTC*\n\n", Utc::now().format("%Y-%m-%d %H:%M:%S")));
+        md.push_str(&format!(
+            "*Generated at: `{}` UTC*\n\n",
+            Utc::now().format("%Y-%m-%d %H:%M:%S")
+        ));
         md.push_str("## 1. Executive Summary\n\n");
         md.push_str("| Metric | Value | Metric | Value |\n");
         md.push_str("| :--- | :--- | :--- | :--- |\n");
-        md.push_str(&format!("| **Total Trades** | `{}` | **Win Rate** | `{:.1}%` ({}/{} wins) |\n", summary.total_trades, summary.win_rate_pct, summary.winning_trades, summary.total_trades));
-        md.push_str(&format!("| **Net Realized PnL** | **`${:.4}`** | **Profit Factor** | `{:.2}` |\n", summary.net_realized_pnl_usd, summary.profit_factor));
-        md.push_str(&format!("| **Gross Funding Income** | `${:.4}` | **Gross Basis PnL** | `${:.4}` |\n", summary.total_gross_funding_usd, summary.total_basis_pnl_usd));
-        md.push_str(&format!("| **Total Trading Fees** | `${:.4}` | **Return on Capital (ROC)** | `{:.2}%` |\n", summary.total_fees_paid_usd, summary.net_return_on_capital_pct));
-        md.push_str(&format!("| **Max Drawdown ($)** | `${:.4}` | **Max Drawdown (%)** | `{:.2}%` |\n", summary.max_drawdown_usd, summary.max_drawdown_pct));
-        md.push_str(&format!("| **Avg Profit / Trade** | `${:.4}` | **Funding Settlements** | `{}` |\n\n", summary.avg_net_profit_per_trade_usd, summary.total_funding_settlement_events));
+        md.push_str(&format!(
+            "| **Total Trades** | `{}` | **Win Rate** | `{:.1}%` ({}/{} wins) |\n",
+            summary.total_trades,
+            summary.win_rate_pct,
+            summary.winning_trades,
+            summary.total_trades
+        ));
+        md.push_str(&format!(
+            "| **Net Realized PnL** | **`${:.4}`** | **Profit Factor** | `{:.2}` |\n",
+            summary.net_realized_pnl_usd, summary.profit_factor
+        ));
+        md.push_str(&format!(
+            "| **Gross Funding Income** | `${:.4}` | **Gross Basis PnL** | `${:.4}` |\n",
+            summary.total_gross_funding_usd, summary.total_basis_pnl_usd
+        ));
+        md.push_str(&format!(
+            "| **Total Trading Fees** | `${:.4}` | **Return on Capital (ROC)** | `{:.2}%` |\n",
+            summary.total_fees_paid_usd, summary.net_return_on_capital_pct
+        ));
+        md.push_str(&format!(
+            "| **Max Drawdown ($)** | `${:.4}` | **Max Drawdown (%)** | `{:.2}%` |\n",
+            summary.max_drawdown_usd, summary.max_drawdown_pct
+        ));
+        md.push_str(&format!(
+            "| **Avg Profit / Trade** | `${:.4}` | **Funding Settlements** | `{}` |\n\n",
+            summary.avg_net_profit_per_trade_usd, summary.total_funding_settlement_events
+        ));
 
         if !summary.symbol_breakdown.is_empty() {
             md.push_str("## 2. Symbol PnL Attribution Breakdown\n\n");
@@ -476,7 +536,13 @@ impl PerformanceAnalytics {
                 };
                 md.push_str(&format!(
                     "| `{}` | `{}` | `{:.1}%` | `${:.4}` | `${:.4}` | `${:.4}` | **`${:.4}`** |\n",
-                    s.symbol, s.total_trades, win_rate, s.gross_funding_usd, s.gross_basis_pnl_usd, s.total_fees_usd, s.net_pnl_usd
+                    s.symbol,
+                    s.total_trades,
+                    win_rate,
+                    s.gross_funding_usd,
+                    s.gross_basis_pnl_usd,
+                    s.total_fees_usd,
+                    s.net_pnl_usd
                 ));
             }
             md.push('\n');

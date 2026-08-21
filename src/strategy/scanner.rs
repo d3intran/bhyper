@@ -90,7 +90,8 @@ impl ArbitrageScanner {
             bn_map.insert(item.symbol.to_ascii_uppercase(), item);
         }
 
-        let mut hl_ctx_map = FxHashMap::with_capacity_and_hasher(hl_meta.universe.len(), Default::default());
+        let mut hl_ctx_map =
+            FxHashMap::with_capacity_and_hasher(hl_meta.universe.len(), Default::default());
         for (u, ctx) in hl_meta.universe.iter().zip(hl_ctxs.iter()) {
             hl_ctx_map.insert(u.name.to_ascii_uppercase(), ctx);
         }

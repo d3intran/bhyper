@@ -237,8 +237,14 @@ impl TelemetryNotifier {
         );
 
         println!("{}", "-".repeat(95));
-        println!("• Total Cross-Exchange Equity: ${:.2}", assessment.total_equity_usd);
-        println!("• Capital Asymmetry / Imbalance: ${:.2}", assessment.imbalance_usd.abs());
+        println!(
+            "• Total Cross-Exchange Equity: ${:.2}",
+            assessment.total_equity_usd
+        );
+        println!(
+            "• Capital Asymmetry / Imbalance: ${:.2}",
+            assessment.imbalance_usd.abs()
+        );
         println!("• Status: {}", assessment.risk_status);
         if assessment.rebalance_required {
             println!("• 💡 Suggested Transfer: {}", assessment.transfer_direction);

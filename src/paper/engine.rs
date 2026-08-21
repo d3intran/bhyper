@@ -96,14 +96,19 @@ impl PaperTradingStore {
         if path.exists() {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read paper state from {}", path.display()))?;
-            let state: PaperTradingState = serde_json::from_str(&content)
-                .with_context(|| format!("Failed to parse paper state JSON from {}", path.display()))?;
+            let state: PaperTradingState = serde_json::from_str(&content).with_context(|| {
+                format!("Failed to parse paper state JSON from {}", path.display())
+            })?;
             info!(
                 "🧪 Loaded Paper Trading State: Total Equity ${:.2}, {} active positions",
                 state.wallet.total_equity_usd(),
                 state.active_positions.len()
             );
-            Ok(Self { path, state, journal })
+            Ok(Self {
+                path,
+                state,
+                journal,
+            })
         } else {
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
@@ -114,7 +119,11 @@ impl PaperTradingStore {
                 total_trades_count: 0,
                 last_updated_at: Utc::now(),
             };
-            let mut store = Self { path, state, journal };
+            let mut store = Self {
+                path,
+                state,
+                journal,
+            };
             store.save()?;
             info!(
                 "🧪 Initialized fresh Paper Trading State with ${:.2} virtual capital",
@@ -175,7 +184,10 @@ impl PaperExecutionEngine {
         let margin_req = notional * 0.5; // 2x leverage margin requirement
 
         // 1. 验证双所虚拟保证金可用性
-        self.store.state.wallet.can_allocate(margin_req, margin_req)?;
+        self.store
+            .state
+            .wallet
+            .can_allocate(margin_req, margin_req)?;
 
         // 2. 模拟真实执行滑点与手续费
         // Maker-Taker: HL Maker 0.00% fee, BN Taker 0.04% fee + slippage
@@ -206,7 +218,11 @@ impl PaperExecutionEngine {
 
         // 3. 锁定虚拟账户保证金并扣除开仓交易费
         self.store.state.wallet.binance.lock_margin(margin_req)?;
-        self.store.state.wallet.hyperliquid.lock_margin(margin_req)?;
+        self.store
+            .state
+            .wallet
+            .hyperliquid
+            .lock_margin(margin_req)?;
         self.store.state.wallet.binance.debit_fee(bn_fee_usd);
         self.store.state.wallet.hyperliquid.debit_fee(hl_fee_usd);
 
@@ -275,13 +291,17 @@ impl PaperExecutionEngine {
             binance_fee_usd: bn_fee_usd,
             binance_mode: "TAKER_MARKET".to_string(),
             total_notional_usd: notional,
-            entry_price_spread_bps: ((hl_actual_price - bn_actual_price) / bn_actual_price) * 10_000.0,
+            entry_price_spread_bps: ((hl_actual_price - bn_actual_price) / bn_actual_price)
+                * 10_000.0,
             total_open_fees_usd: hl_fee_usd + bn_fee_usd,
             execution_latency_ms: 12,
         };
         let _ = self.journal.append(&JournalEntry::OpenFill(open_event));
 
-        self.store.state.active_positions.insert(opp.symbol.clone(), pos.clone());
+        self.store
+            .state
+            .active_positions
+            .insert(opp.symbol.clone(), pos.clone());
         self.store.state.total_trades_count += 1;
         self.store.save()?;
 
@@ -299,8 +319,10 @@ impl PaperExecutionEngine {
         opportunities: &[ArbitrageOpportunity],
     ) -> Result<Vec<FundingSettlementEvent>> {
         let now = Utc::now();
-        let opp_map: HashMap<String, &ArbitrageOpportunity> =
-            opportunities.iter().map(|o| (o.symbol.clone(), o)).collect();
+        let opp_map: HashMap<String, &ArbitrageOpportunity> = opportunities
+            .iter()
+            .map(|o| (o.symbol.clone(), o))
+            .collect();
 
         let mut events = Vec::new();
         let symbols: Vec<String> = self.store.state.active_positions.keys().cloned().collect();
@@ -328,7 +350,11 @@ impl PaperExecutionEngine {
                     PositionSide::Long => -hl_notional * rate_1h,
                 };
 
-                self.store.state.wallet.hyperliquid.apply_funding(hl_cashflow);
+                self.store
+                    .state
+                    .wallet
+                    .hyperliquid
+                    .apply_funding(hl_cashflow);
                 pos.accumulated_hl_funding_usd += hl_cashflow;
                 pos.total_funding_usd += hl_cashflow;
                 pos.last_hl_funding_time = now;
@@ -361,8 +387,11 @@ impl PaperExecutionEngine {
 
             // 2. Binance 8-Hour Settlement Check (Settles at 00:00, 08:00, 16:00 UTC)
             let bn_elapsed = now.signed_duration_since(pos.last_bn_funding_time);
-            let is_settlement_hour = now.minute() == 0 && (now.hour() == 0 || now.hour() == 8 || now.hour() == 16);
-            if bn_elapsed >= Duration::hours(8) || (is_settlement_hour && bn_elapsed >= Duration::minutes(30)) {
+            let is_settlement_hour =
+                now.minute() == 0 && (now.hour() == 0 || now.hour() == 8 || now.hour() == 16);
+            if bn_elapsed >= Duration::hours(8)
+                || (is_settlement_hour && bn_elapsed >= Duration::minutes(30))
+            {
                 let rate_8h = opp.binance_rate_8h_pct / 100.0;
                 let bn_notional = pos.binance_qty * opp.binance_mark_price;
                 let bn_cashflow = match pos.binance_side {
@@ -429,12 +458,17 @@ impl PaperExecutionEngine {
         let hl_exit_fee_usd = notional * 0.00035; // Taker 0.035%
         let bn_exit_fee_usd = notional * 0.00040; // Taker 0.040%
         let total_exit_fees_usd = hl_exit_fee_usd + bn_exit_fee_usd;
-        let total_roundtrip_fees_usd = pos.binance_entry_fee_usd + pos.hyperliquid_entry_fee_usd + total_exit_fees_usd;
+        let total_roundtrip_fees_usd =
+            pos.binance_entry_fee_usd + pos.hyperliquid_entry_fee_usd + total_exit_fees_usd;
 
         // Basis PnL
         let hl_basis_pnl = match pos.hyperliquid_side {
-            PositionSide::Long => pos.hyperliquid_qty * (live_hl_price - pos.hyperliquid_entry_price),
-            PositionSide::Short => pos.hyperliquid_qty * (pos.hyperliquid_entry_price - live_hl_price),
+            PositionSide::Long => {
+                pos.hyperliquid_qty * (live_hl_price - pos.hyperliquid_entry_price)
+            }
+            PositionSide::Short => {
+                pos.hyperliquid_qty * (pos.hyperliquid_entry_price - live_hl_price)
+            }
         };
 
         let bn_basis_pnl = match pos.binance_side {
@@ -445,16 +479,29 @@ impl PaperExecutionEngine {
         let gross_basis_pnl_usd = hl_basis_pnl + bn_basis_pnl;
         let gross_funding_earned_usd = pos.total_funding_usd;
 
-        let net_realized_pnl_usd = gross_basis_pnl_usd + gross_funding_earned_usd - total_roundtrip_fees_usd;
+        let net_realized_pnl_usd =
+            gross_basis_pnl_usd + gross_funding_earned_usd - total_roundtrip_fees_usd;
         let net_return_bps = (net_realized_pnl_usd / notional) * 10_000.0;
         let return_on_capital_pct = (net_realized_pnl_usd / notional) * 100.0;
         let duration_secs = (Utc::now() - pos.opened_at).num_seconds().max(1) as u64;
 
         // Release margin and apply PnL
-        self.store.state.wallet.binance.release_margin(margin_released, bn_basis_pnl);
-        self.store.state.wallet.hyperliquid.release_margin(margin_released, hl_basis_pnl);
+        self.store
+            .state
+            .wallet
+            .binance
+            .release_margin(margin_released, bn_basis_pnl);
+        self.store
+            .state
+            .wallet
+            .hyperliquid
+            .release_margin(margin_released, hl_basis_pnl);
         self.store.state.wallet.binance.debit_fee(bn_exit_fee_usd);
-        self.store.state.wallet.hyperliquid.debit_fee(hl_exit_fee_usd);
+        self.store
+            .state
+            .wallet
+            .hyperliquid
+            .debit_fee(hl_exit_fee_usd);
 
         let close_event = TradeCloseFillEvent {
             id: format!("close-{}-{}", symbol, Utc::now().timestamp_millis()),
@@ -477,7 +524,9 @@ impl PaperExecutionEngine {
             return_on_capital_pct,
         };
 
-        let _ = self.journal.append(&JournalEntry::CloseFill(close_event.clone()));
+        let _ = self
+            .journal
+            .append(&JournalEntry::CloseFill(close_event.clone()));
         self.store.save()?;
 
         info!(

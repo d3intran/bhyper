@@ -23,7 +23,9 @@ pub use journal::{
     RiskAuditEvent, SymbolPerformance, TradeCloseFillEvent, TradeIntentEvent, TradeJournal,
     TradeOpenFillEvent,
 };
-pub use paper::{PaperDualWallet, PaperExecutionEngine, PaperPosition, PaperTradingStore, VirtualAccount};
+pub use paper::{
+    PaperDualWallet, PaperExecutionEngine, PaperPosition, PaperTradingStore, VirtualAccount,
+};
 pub use risk::{ExitSignal, RiskAssessment, RiskSentinel};
 pub use state::StateStore;
 pub use strategy::{

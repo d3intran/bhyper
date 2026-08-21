@@ -147,7 +147,10 @@ impl PaperDualWallet {
         Ok(())
     }
 
-    pub fn get_margin_assessment(&self, rebalance_threshold_pct: f64) -> CrossExchangeMarginAssessment {
+    pub fn get_margin_assessment(
+        &self,
+        rebalance_threshold_pct: f64,
+    ) -> CrossExchangeMarginAssessment {
         let bn_h = self.binance.to_margin_health();
         let hl_h = self.hyperliquid.to_margin_health();
         crate::state::StateStore::compute_rebalance_advisory(&bn_h, &hl_h, rebalance_threshold_pct)

@@ -363,14 +363,27 @@ impl TwoLegExecutor {
         let bn_res = if let Some(ref ws_client) = self.ws_api_client {
             info!("⚡ Ultra Low-Latency Route: Executing Binance hedge via WebSocket API (order.place)...");
             match ws_client
-                .place_order(&opp.symbol, bn_side_str, "MARKET", &bn_qty_formatted, None, false)
+                .place_order(
+                    &opp.symbol,
+                    bn_side_str,
+                    "MARKET",
+                    &bn_qty_formatted,
+                    None,
+                    false,
+                )
                 .await
             {
                 Ok(v) => Ok(v),
                 Err(e) => {
                     warn!("⚠️ Binance WS API returned error ({:?}), immediately falling back to HTTP REST...", e);
                     self.binance
-                        .place_order(&opp.symbol, decision.bn_side, &bn_qty_formatted, None, false)
+                        .place_order(
+                            &opp.symbol,
+                            decision.bn_side,
+                            &bn_qty_formatted,
+                            None,
+                            false,
+                        )
                         .await
                 }
             }
@@ -455,27 +468,31 @@ impl TwoLegExecutor {
                     reason: format!("Live execution triggered (mode: {})", self.execution_mode),
                 }));
 
-                let _ = self.journal.append(&JournalEntry::OpenFill(TradeOpenFillEvent {
-                    id: trade_id.clone(),
-                    intent_id: format!("intent-{}", trade_id),
-                    symbol: opp.symbol.clone(),
-                    timestamp: Utc::now(),
-                    is_paper: false,
-                    hyperliquid_side: decision.hl_side,
-                    hyperliquid_qty: hl_filled_qty,
-                    hyperliquid_price: hl_actual_price,
-                    hyperliquid_fee_usd: actual_notional * 0.00035,
-                    hyperliquid_mode: format!("{}", self.execution_mode),
-                    binance_side: decision.bn_side,
-                    binance_qty: hl_filled_qty,
-                    binance_price: opp.binance_mark_price,
-                    binance_fee_usd: actual_notional * 0.0004,
-                    binance_mode: "MARKET_TAKER".to_string(),
-                    total_notional_usd: actual_notional,
-                    entry_price_spread_bps: ((hl_actual_price - opp.binance_mark_price) / opp.binance_mark_price) * 10_000.0,
-                    total_open_fees_usd: actual_notional * (0.00035 + 0.0004),
-                    execution_latency_ms: 15,
-                }));
+                let _ = self
+                    .journal
+                    .append(&JournalEntry::OpenFill(TradeOpenFillEvent {
+                        id: trade_id.clone(),
+                        intent_id: format!("intent-{}", trade_id),
+                        symbol: opp.symbol.clone(),
+                        timestamp: Utc::now(),
+                        is_paper: false,
+                        hyperliquid_side: decision.hl_side,
+                        hyperliquid_qty: hl_filled_qty,
+                        hyperliquid_price: hl_actual_price,
+                        hyperliquid_fee_usd: actual_notional * 0.00035,
+                        hyperliquid_mode: format!("{}", self.execution_mode),
+                        binance_side: decision.bn_side,
+                        binance_qty: hl_filled_qty,
+                        binance_price: opp.binance_mark_price,
+                        binance_fee_usd: actual_notional * 0.0004,
+                        binance_mode: "MARKET_TAKER".to_string(),
+                        total_notional_usd: actual_notional,
+                        entry_price_spread_bps: ((hl_actual_price - opp.binance_mark_price)
+                            / opp.binance_mark_price)
+                            * 10_000.0,
+                        total_open_fees_usd: actual_notional * (0.00035 + 0.0004),
+                        execution_latency_ms: 15,
+                    }));
 
                 let alert = format!(
                     "🚨 <b>[实盘双腿建仓成功] BHyper Live Arbitrage</b>\n\n\
@@ -631,10 +648,20 @@ impl TwoLegExecutor {
         if let Some(ref ws_client) = self.ws_api_client {
             info!("⚡ Ultra Low-Latency Route: Closing Binance leg via WebSocket API...");
             if let Err(e) = ws_client
-                .place_order(&position.symbol, bn_close_side_str, "MARKET", &bn_qty_str, None, true)
+                .place_order(
+                    &position.symbol,
+                    bn_close_side_str,
+                    "MARKET",
+                    &bn_qty_str,
+                    None,
+                    true,
+                )
                 .await
             {
-                warn!("⚠️ Binance WS API close error ({:?}), falling back to HTTP REST...", e);
+                warn!(
+                    "⚠️ Binance WS API close error ({:?}), falling back to HTTP REST...",
+                    e
+                );
                 let _ = self
                     .binance
                     .place_order(&position.symbol, bn_close_side, &bn_qty_str, None, true)
@@ -680,26 +707,32 @@ impl TwoLegExecutor {
         let total_exit_fees = notional * (0.00035 + 0.0004);
         let duration_secs = (Utc::now() - position.opened_at).num_seconds().max(1) as u64;
 
-        let _ = self.journal.append(&JournalEntry::CloseFill(TradeCloseFillEvent {
-            id: format!("close-{}-{}", position.symbol, Utc::now().timestamp_millis()),
-            open_trade_id: format!("{}-live", position.symbol),
-            symbol: position.symbol.clone(),
-            timestamp: Utc::now(),
-            is_paper: false,
-            holding_duration_secs: duration_secs,
-            exit_reason: close_reason.to_string(),
-            hyperliquid_exit_price: live_hl_px,
-            hyperliquid_exit_fee_usd: notional * 0.00035,
-            binance_exit_price: live_bn_px,
-            binance_exit_fee_usd: notional * 0.00040,
-            total_exit_fees_usd: total_exit_fees,
-            total_roundtrip_fees_usd: total_exit_fees * 2.0,
-            gross_basis_pnl_usd: basis_pnl,
-            gross_funding_earned_usd: position.accumulated_funding_usd,
-            net_realized_pnl_usd: total_pnl,
-            net_return_bps: (total_pnl / notional.max(1.0)) * 10_000.0,
-            return_on_capital_pct: (total_pnl / notional.max(1.0)) * 100.0,
-        }));
+        let _ = self
+            .journal
+            .append(&JournalEntry::CloseFill(TradeCloseFillEvent {
+                id: format!(
+                    "close-{}-{}",
+                    position.symbol,
+                    Utc::now().timestamp_millis()
+                ),
+                open_trade_id: format!("{}-live", position.symbol),
+                symbol: position.symbol.clone(),
+                timestamp: Utc::now(),
+                is_paper: false,
+                holding_duration_secs: duration_secs,
+                exit_reason: close_reason.to_string(),
+                hyperliquid_exit_price: live_hl_px,
+                hyperliquid_exit_fee_usd: notional * 0.00035,
+                binance_exit_price: live_bn_px,
+                binance_exit_fee_usd: notional * 0.00040,
+                total_exit_fees_usd: total_exit_fees,
+                total_roundtrip_fees_usd: total_exit_fees * 2.0,
+                gross_basis_pnl_usd: basis_pnl,
+                gross_funding_earned_usd: position.accumulated_funding_usd,
+                net_realized_pnl_usd: total_pnl,
+                net_return_bps: (total_pnl / notional.max(1.0)) * 10_000.0,
+                return_on_capital_pct: (total_pnl / notional.max(1.0)) * 100.0,
+            }));
 
         let alert = format!(
             "🔔 <b>[套利平仓完成] BHyper Position Closed</b>\n\n\

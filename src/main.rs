@@ -474,7 +474,10 @@ async fn main() -> Result<()> {
             let bn_health = match bn_health_res {
                 Ok(h) => h,
                 Err(e) => {
-                    warn!("Could not fetch Binance margin health (Check API keys): {:?}", e);
+                    warn!(
+                        "Could not fetch Binance margin health (Check API keys): {:?}",
+                        e
+                    );
                     crate::types::ExchangeMarginHealth {
                         exchange: crate::types::Exchange::Binance,
                         account_value_usd: 0.0,
@@ -490,7 +493,10 @@ async fn main() -> Result<()> {
             let hl_health = match hl_health_res {
                 Ok(h) => h,
                 Err(e) => {
-                    warn!("Could not fetch Hyperliquid margin health (Check Wallet address): {:?}", e);
+                    warn!(
+                        "Could not fetch Hyperliquid margin health (Check Wallet address): {:?}",
+                        e
+                    );
                     crate::types::ExchangeMarginHealth {
                         exchange: crate::types::Exchange::Hyperliquid,
                         account_value_usd: 0.0,
@@ -984,7 +990,13 @@ async fn main() -> Result<()> {
                 let _ = engine.accrue_funding_payments(&opps);
 
                 // 2. Active Positions Exit Audit
-                let active_syms: Vec<String> = engine.store.state.active_positions.keys().cloned().collect();
+                let active_syms: Vec<String> = engine
+                    .store
+                    .state
+                    .active_positions
+                    .keys()
+                    .cloned()
+                    .collect();
                 for sym in active_syms {
                     let pos = match engine.store.state.active_positions.get(&sym) {
                         Some(p) => p.clone(),
@@ -1015,7 +1027,10 @@ async fn main() -> Result<()> {
                         | ExitSignal::DeltaDriftCritical { reason, .. }
                         | ExitSignal::MarginCritical { reason, .. }
                         | ExitSignal::LiquidationThreat { reason, .. } => {
-                            warn!("🚨 [PAPER AUTO EXIT] Closing position on {}: {}", sym, reason);
+                            warn!(
+                                "🚨 [PAPER AUTO EXIT] Closing position on {}: {}",
+                                sym, reason
+                            );
                             let _ = engine.simulate_close(&sym, live_bn_px, live_hl_px, &reason);
                         }
                     }
@@ -1024,8 +1039,13 @@ async fn main() -> Result<()> {
                 // 3. New Arbitrage Opportunity Evaluation
                 let current_active_count = engine.store.state.active_positions.len();
                 if current_active_count < config.strategy.max_active_positions {
-                    let held_symbols: std::collections::HashSet<String> =
-                        engine.store.state.active_positions.keys().cloned().collect();
+                    let held_symbols: std::collections::HashSet<String> = engine
+                        .store
+                        .state
+                        .active_positions
+                        .keys()
+                        .cloned()
+                        .collect();
 
                     for opp in &opps {
                         if held_symbols.contains(&opp.symbol) {
@@ -1050,7 +1070,9 @@ async fn main() -> Result<()> {
                                 opp.symbol, opp.net_spread_apr_pct, decision.net_expected_profit_usd
                             );
 
-                            if let Err(e) = engine.simulate_open(opp, &decision, prec, execution_mode) {
+                            if let Err(e) =
+                                engine.simulate_open(opp, &decision, prec, execution_mode)
+                            {
                                 warn!("Failed to simulate open on {}: {:?}", opp.symbol, e);
                             }
                             break;
@@ -1107,7 +1129,11 @@ async fn main() -> Result<()> {
                 println!("  (No journal entries matching query filter found)");
             } else {
                 for e in entries {
-                    let mode_tag = if e.is_paper() { "🧪 PAPER" } else { "⚡ LIVE" };
+                    let mode_tag = if e.is_paper() {
+                        "🧪 PAPER"
+                    } else {
+                        "⚡ LIVE"
+                    };
                     let t_str = e.timestamp().format("%Y-%m-%d %H:%M:%S").to_string();
 
                     match e {
@@ -1118,7 +1144,10 @@ async fn main() -> Result<()> {
                                 "INTENT",
                                 i.symbol,
                                 mode_tag,
-                                format!("Spread: {:.1}% | HL:{} BN:{}", i.net_spread_apr_pct, i.hyperliquid_side, i.binance_side),
+                                format!(
+                                    "Spread: {:.1}% | HL:{} BN:{}",
+                                    i.net_spread_apr_pct, i.hyperliquid_side, i.binance_side
+                                ),
                                 i.target_notional_usd
                             );
                         }
@@ -1129,7 +1158,10 @@ async fn main() -> Result<()> {
                                 "OPEN_FILL",
                                 o.symbol,
                                 mode_tag,
-                                format!("HL: ${:.4} | BN: ${:.4} (Fee: ${:.4})", o.hyperliquid_price, o.binance_price, o.total_open_fees_usd),
+                                format!(
+                                    "HL: ${:.4} | BN: ${:.4} (Fee: ${:.4})",
+                                    o.hyperliquid_price, o.binance_price, o.total_open_fees_usd
+                                ),
                                 o.total_notional_usd
                             );
                         }
@@ -1140,7 +1172,10 @@ async fn main() -> Result<()> {
                                 "FUNDING",
                                 f.symbol,
                                 mode_tag,
-                                format!("{}: {:.2} bps | Cum: ${:.4}", f.exchange, f.rate_bps, f.cumulative_funding_usd),
+                                format!(
+                                    "{}: {:.2} bps | Cum: ${:.4}",
+                                    f.exchange, f.rate_bps, f.cumulative_funding_usd
+                                ),
                                 f.funding_payment_usd
                             );
                         }
@@ -1162,7 +1197,12 @@ async fn main() -> Result<()> {
                                 "CLOSE_FILL",
                                 c.symbol,
                                 mode_tag,
-                                format!("Held: {:.1}h | Funding: ${:.4} | Fees: ${:.4}", c.holding_duration_secs as f64 / 3600.0, c.gross_funding_earned_usd, c.total_roundtrip_fees_usd),
+                                format!(
+                                    "Held: {:.1}h | Funding: ${:.4} | Fees: ${:.4}",
+                                    c.holding_duration_secs as f64 / 3600.0,
+                                    c.gross_funding_earned_usd,
+                                    c.total_roundtrip_fees_usd
+                                ),
                                 c.net_realized_pnl_usd
                             );
                         }
@@ -1178,7 +1218,8 @@ async fn main() -> Result<()> {
         } => {
             let journal = journal::TradeJournal::new(None);
             let entries = journal.read_all()?;
-            let summary = journal::PerformanceAnalytics::compute_from_entries(&entries, initial_capital);
+            let summary =
+                journal::PerformanceAnalytics::compute_from_entries(&entries, initial_capital);
 
             journal::PerformanceAnalytics::render_console_summary(&summary);
 
@@ -1189,7 +1230,10 @@ async fn main() -> Result<()> {
                     let _ = std::fs::create_dir_all(p);
                 }
                 std::fs::write(&target, md_content)?;
-                println!("📄 Exported markdown review report to: {}", target.display());
+                println!(
+                    "📄 Exported markdown review report to: {}",
+                    target.display()
+                );
             }
         }
 

@@ -57,11 +57,7 @@ impl Default for ProfitTriggerEngine {
 }
 
 impl ProfitTriggerEngine {
-    pub fn new(
-        min_net_profit_bps: f64,
-        max_notional_usd: f64,
-        maker_taker_mode: bool,
-    ) -> Self {
+    pub fn new(min_net_profit_bps: f64, max_notional_usd: f64, maker_taker_mode: bool) -> Self {
         Self {
             min_net_profit_bps,
             max_notional_usd,
@@ -131,7 +127,11 @@ impl ProfitTriggerEngine {
         let is_bn_settlement = Self::is_binance_settlement_hour_at(&now);
 
         // 0. 黑白名单锁 (Whitelist / Blacklist Guard)
-        if self.symbol_blacklist.iter().any(|b| b.eq_ignore_ascii_case(&opp.symbol)) {
+        if self
+            .symbol_blacklist
+            .iter()
+            .any(|b| b.eq_ignore_ascii_case(&opp.symbol))
+        {
             return TriggerDecision {
                 symbol: opp.symbol.clone(),
                 should_open: false,
@@ -151,7 +151,10 @@ impl ProfitTriggerEngine {
         }
 
         if !self.symbol_whitelist.is_empty()
-            && !self.symbol_whitelist.iter().any(|w| w.eq_ignore_ascii_case(&opp.symbol))
+            && !self
+                .symbol_whitelist
+                .iter()
+                .any(|w| w.eq_ignore_ascii_case(&opp.symbol))
         {
             return TriggerDecision {
                 symbol: opp.symbol.clone(),
@@ -172,7 +175,9 @@ impl ProfitTriggerEngine {
         }
 
         // 1. 流动性与持仓量锁 (Liquidity & Open Interest Guard)
-        if opp.total_open_interest_usd > 0.0 && opp.total_open_interest_usd < self.min_open_interest_usd {
+        if opp.total_open_interest_usd > 0.0
+            && opp.total_open_interest_usd < self.min_open_interest_usd
+        {
             return TriggerDecision {
                 symbol: opp.symbol.clone(),
                 should_open: false,
@@ -194,7 +199,8 @@ impl ProfitTriggerEngine {
             };
         }
 
-        if opp.binance_volume_24h_usd > 0.0 && opp.binance_volume_24h_usd < self.min_24h_volume_usd {
+        if opp.binance_volume_24h_usd > 0.0 && opp.binance_volume_24h_usd < self.min_24h_volume_usd
+        {
             return TriggerDecision {
                 symbol: opp.symbol.clone(),
                 should_open: false,

@@ -276,9 +276,21 @@ impl HyperliquidClient {
     pub async fn fetch_margin_health(&self) -> Result<crate::types::ExchangeMarginHealth> {
         let state = self.fetch_clearinghouse_state().await?;
 
-        let account_value = state.margin_summary.account_value.parse::<f64>().unwrap_or(0.0);
-        let total_margin_used = state.margin_summary.total_margin_used.parse::<f64>().unwrap_or(0.0);
-        let total_raw_usd = state.margin_summary.total_raw_usd.parse::<f64>().unwrap_or(0.0);
+        let account_value = state
+            .margin_summary
+            .account_value
+            .parse::<f64>()
+            .unwrap_or(0.0);
+        let total_margin_used = state
+            .margin_summary
+            .total_margin_used
+            .parse::<f64>()
+            .unwrap_or(0.0);
+        let total_raw_usd = state
+            .margin_summary
+            .total_raw_usd
+            .parse::<f64>()
+            .unwrap_or(0.0);
 
         let margin_utilization_pct = if account_value > 0.0 {
             (total_margin_used / account_value) * 100.0

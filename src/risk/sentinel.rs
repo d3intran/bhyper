@@ -79,7 +79,8 @@ impl RiskSentinel {
                 utilization_pct: assessment.binance.margin_utilization_pct,
                 reason: format!(
                     "币安保证金利用率达到 {:.1}% 超过安全阈值 {:.1}%",
-                    assessment.binance.margin_utilization_pct, self.config.max_margin_utilization_pct
+                    assessment.binance.margin_utilization_pct,
+                    self.config.max_margin_utilization_pct
                 ),
             };
         }
@@ -90,29 +91,36 @@ impl RiskSentinel {
                 utilization_pct: assessment.hyperliquid.margin_utilization_pct,
                 reason: format!(
                     "Hyperliquid 保证金利用率达到 {:.1}% 超过安全阈值 {:.1}%",
-                    assessment.hyperliquid.margin_utilization_pct, self.config.max_margin_utilization_pct
+                    assessment.hyperliquid.margin_utilization_pct,
+                    self.config.max_margin_utilization_pct
                 ),
             };
         }
 
-        if assessment.binance.min_liquidation_distance_pct < self.config.min_liquidation_distance_pct {
+        if assessment.binance.min_liquidation_distance_pct
+            < self.config.min_liquidation_distance_pct
+        {
             return ExitSignal::LiquidationThreat {
                 exchange: "Binance".to_string(),
                 distance_pct: assessment.binance.min_liquidation_distance_pct,
                 reason: format!(
                     "币安头寸距离强平价不足 {:.1}% (阈值: {:.1}%)",
-                    assessment.binance.min_liquidation_distance_pct, self.config.min_liquidation_distance_pct
+                    assessment.binance.min_liquidation_distance_pct,
+                    self.config.min_liquidation_distance_pct
                 ),
             };
         }
 
-        if assessment.hyperliquid.min_liquidation_distance_pct < self.config.min_liquidation_distance_pct {
+        if assessment.hyperliquid.min_liquidation_distance_pct
+            < self.config.min_liquidation_distance_pct
+        {
             return ExitSignal::LiquidationThreat {
                 exchange: "Hyperliquid".to_string(),
                 distance_pct: assessment.hyperliquid.min_liquidation_distance_pct,
                 reason: format!(
                     "Hyperliquid 头寸距离强平价不足 {:.1}% (阈值: {:.1}%)",
-                    assessment.hyperliquid.min_liquidation_distance_pct, self.config.min_liquidation_distance_pct
+                    assessment.hyperliquid.min_liquidation_distance_pct,
+                    self.config.min_liquidation_distance_pct
                 ),
             };
         }
