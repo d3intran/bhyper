@@ -1,0 +1,42 @@
+# ==============================================================================
+# ⚡ BHyper: Binance x Hyperliquid Funding Rate Arbitrage Engine Configuration
+# ==============================================================================
+
+[binance]
+# Binance Futures API Credentials (Optional for public market data scanning)
+api_key = "YOUR_BINANCE_API_KEY"
+api_secret = "YOUR_BINANCE_API_SECRET"
+base_url = "https://fapi.binance.com"
+
+[hyperliquid]
+# Hyperliquid Arbitrum / L1 Wallet & Private Key (0x-prefixed Ethereum Key)
+private_key = "YOUR_HL_ETHEREUM_PRIVATE_KEY"
+wallet_address = "YOUR_HL_WALLET_ADDRESS"
+base_url = "https://api.hyperliquid.xyz"
+is_testnet = false
+
+[strategy]
+# Core Arbitrage Parameters
+tracked_symbols = [
+    "BTC", "ETH", "SOL", "SUI", "DOGE", "AVAX", "LINK", 
+    "NEAR", "APT", "ARB", "OP", "PEPE", "WIF", "TAO", "RENDER", "ONDO", "SAGA"
+]
+min_open_apr_pct = 30.0          # Minimum Net Spread APR to trigger trade (e.g. 30%)
+min_exit_apr_pct = 5.0           # Exit threshold when spread compresses (e.g. 5%)
+max_position_usd_per_pair = 50.0 # Max notional size per pair (optimized for $100 capital)
+leverage = 2.0                   # Conservative leverage (2x ~ 3x)
+maker_taker_mode = true          # Post-only Maker on HL + Instant Taker on Binance
+max_slippage_bps = 15.0          # Max acceptable slippage in basis points (0.15%)
+
+[risk]
+# Dynamic Risk Sentinel Configuration
+max_delta_drift_pct = 5.0        # Max allowed delta imbalance before rebalancing (5%)
+min_margin_ratio_pct = 20.0      # Liquidation safety buffer threshold
+max_total_notional_usd = 200.0   # Max total portfolio notional across all active pairs
+auto_rebalance_delta = true      # Automatically balance orphan legs
+
+[telegram]
+# Optional Telemetry & Remote Alerting
+bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
+chat_id = 123456789
+alerts_enabled = true
