@@ -451,6 +451,7 @@ dependencies = [
  "ring",
  "rmp-serde",
  "rustc-hash",
+ "rustls 0.23.43",
  "serde",
  "serde_json",
  "sha2",
@@ -2403,6 +2404,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
 dependencies = [
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki 0.103.14",
  "subtle",
