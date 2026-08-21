@@ -126,6 +126,15 @@ enum Commands {
         #[arg(short, long, default_value_t = 100.0)]
         initial_capital: f64,
     },
+    /// 手动执行单次指定币种模拟开仓或平仓测试 (Manual Single-Shot Paper Trade Test)
+    PaperTrade {
+        #[arg(short, long)]
+        symbol: String,
+        #[arg(short, long, default_value_t = 50.0)]
+        margin_usd: f64,
+        #[arg(short, long, default_value = "open")]
+        action: String,
+    },
     /// 紧急手动平仓指定币种在双边的所有对冲头寸
     Unwind {
         #[arg(short, long)]
@@ -1246,6 +1255,186 @@ async fn main() -> Result<()> {
                 "✅ Reset paper trading state successfully. Virtual capital set to ${:.2}.",
                 initial_capital
             );
+        }
+
+        Commands::PaperTrade {
+            symbol,
+            margin_usd,
+            action,
+        } => {
+            let sym_upper = symbol.to_ascii_uppercase();
+            let paper_store = paper::PaperTradingStore::load_or_create(None, 100.0)?;
+            let mut engine = paper::PaperExecutionEngine::new(paper_store);
+
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode);
+
+            match action.to_ascii_lowercase().as_str() {
+                "open" => {
+                    println!(
+                        "🔍 Fetching live market quote & precision for {}...",
+                        sym_upper
+                    );
+                    let (opps, precisions) = tokio::join!(
+                        scanner.scan_opportunities(),
+                        scanner.fetch_symbol_precisions()
+                    );
+                    let opps = opps?;
+                    let precisions = precisions?;
+
+                    let opp = match opps.iter().find(|o| o.symbol == sym_upper) {
+                        Some(o) => o,
+                        None => {
+                            eprintln!(
+                                "❌ Symbol {} not found in active arbitrage opportunities scan.",
+                                sym_upper
+                            );
+                            return Ok(());
+                        }
+                    };
+
+                    let prec = match precisions.get(&sym_upper) {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("❌ Precision rules for {} not found.", sym_upper);
+                            return Ok(());
+                        }
+                    };
+
+                    let trigger_engine = ProfitTriggerEngine::new(
+                        0.0, // Force evaluate for manual test
+                        margin_usd,
+                        config.strategy.maker_taker_mode,
+                    );
+
+                    let decision = trigger_engine.evaluate_opportunity(
+                        opp,
+                        margin_usd,
+                        true, // ignore_window for manual test
+                        Some(prec),
+                    );
+
+                    println!("\n{}", "=".repeat(100));
+                    println!(
+                        "🧪 [MANUAL PAPER TRADE] Executing Simulated Open on {}",
+                        sym_upper
+                    );
+                    println!("{}", "=".repeat(100));
+                    println!("• Target Margin:        ${:.2}", margin_usd);
+                    println!("• Spread APR:           {:.2}%", opp.net_spread_apr_pct);
+                    println!("• Hyperliquid Side:     {}", opp.hyperliquid_side);
+                    println!("• Binance Side:         {}", opp.binance_side);
+
+                    match engine.simulate_open(opp, &decision, prec, ExecutionMode::MakerTaker) {
+                        Ok(pos) => {
+                            println!("\n✅ [SIMULATION SUCCESSFUL] Position Established:");
+                            println!("• Aligned Qty:          {}", pos.hyperliquid_qty);
+                            println!("• Nominal Value:        ${:.2}", pos.nominal_value_usd);
+                            println!(
+                                "• HL Entry Price:       ${:.4} (Fee: ${:.4})",
+                                pos.hyperliquid_entry_price, pos.hyperliquid_entry_fee_usd
+                            );
+                            println!(
+                                "• BN Entry Price:       ${:.4} (Fee: ${:.4})",
+                                pos.binance_entry_price, pos.binance_entry_fee_usd
+                            );
+                            println!(
+                                "• Virtual Equity:       ${:.2} (Free: ${:.2})",
+                                engine.store.state.wallet.total_equity_usd(),
+                                engine.store.state.wallet.total_equity_usd()
+                                    - engine.store.state.wallet.binance.allocated_margin_usd
+                                    - engine.store.state.wallet.hyperliquid.allocated_margin_usd
+                            );
+                            println!("\n💡 You can run `bhyper journal` to view the recorded TradeIntent & OpenFill ledger entries!");
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Failed to simulate open: {:?}", e);
+                        }
+                    }
+                    println!("{}\n", "=".repeat(100));
+                }
+                "close" => {
+                    if !engine.store.state.active_positions.contains_key(&sym_upper) {
+                        eprintln!("❌ No active paper position found for {}.", sym_upper);
+                        return Ok(());
+                    }
+
+                    println!("🔍 Fetching live exit market price for {}...", sym_upper);
+                    let opps = scanner.scan_opportunities().await?;
+                    let (live_bn_px, live_hl_px) = if let Some(opp) =
+                        opps.iter().find(|o| o.symbol == sym_upper)
+                    {
+                        (opp.binance_mark_price, opp.hyperliquid_mark_price)
+                    } else if let Some(pos) = engine.store.state.active_positions.get(&sym_upper) {
+                        (pos.binance_entry_price, pos.hyperliquid_entry_price)
+                    } else {
+                        (0.0, 0.0)
+                    };
+
+                    println!("\n{}", "=".repeat(100));
+                    println!(
+                        "🧪 [MANUAL PAPER TRADE] Executing Simulated Close on {}",
+                        sym_upper
+                    );
+                    println!("{}", "=".repeat(100));
+
+                    match engine.simulate_close(
+                        &sym_upper,
+                        live_bn_px,
+                        live_hl_px,
+                        "Manual paper close test",
+                    ) {
+                        Ok(Some(close_event)) => {
+                            println!("\n✅ [SIMULATION SUCCESSFUL] Position Closed & Settled:");
+                            println!("• Symbol:               {}", close_event.symbol);
+                            println!(
+                                "• Gross Basis PnL:      ${:.4}",
+                                close_event.gross_basis_pnl_usd
+                            );
+                            println!(
+                                "• Gross Funding Earned: ${:.4}",
+                                close_event.gross_funding_earned_usd
+                            );
+                            println!(
+                                "• Total Roundtrip Fees: ${:.4}",
+                                close_event.total_roundtrip_fees_usd
+                            );
+                            println!(
+                                "• Net Realized PnL:     ${:.4} ({:.2} bps)",
+                                close_event.net_realized_pnl_usd, close_event.net_return_bps
+                            );
+                            println!(
+                                "• Updated Total Equity: ${:.2}",
+                                engine.store.state.wallet.total_equity_usd()
+                            );
+                            println!("\n💡 Run `bhyper report` to view updated comprehensive performance & win-rate metrics!");
+                        }
+                        Ok(None) => {
+                            println!("⚠️ Position was already closed.");
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Failed to simulate close: {:?}", e);
+                        }
+                    }
+                    println!("{}\n", "=".repeat(100));
+                }
+                other => {
+                    eprintln!(
+                        "❌ Invalid action '{}'. Use --action open or --action close.",
+                        other
+                    );
+                }
+            }
         }
 
         Commands::Unwind { symbol } => {
