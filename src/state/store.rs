@@ -346,4 +346,60 @@ impl StateStore {
         let _ = self.save();
         report
     }
+
+    /// 计算跨所资金与保证金再平衡建议 (Rebalance Advisory)
+    pub fn compute_rebalance_advisory(
+        bn_health: &crate::types::ExchangeMarginHealth,
+        hl_health: &crate::types::ExchangeMarginHealth,
+        threshold_imbalance_pct: f64,
+    ) -> crate::types::CrossExchangeMarginAssessment {
+        let total_equity = bn_health.account_value_usd + hl_health.account_value_usd;
+        let imbalance = bn_health.account_value_usd - hl_health.account_value_usd;
+        let imbalance_pct = if total_equity > 0.0 {
+            (imbalance.abs() / total_equity) * 100.0
+        } else {
+            0.0
+        };
+
+        let target_per_exchange = total_equity / 2.0;
+        let suggested_transfer_usd = (bn_health.account_value_usd - target_per_exchange).abs();
+
+        let rebalance_required = imbalance_pct > threshold_imbalance_pct;
+
+        let (transfer_direction, risk_status) = if !rebalance_required {
+            (
+                "BALANCED".to_string(),
+                "🟢 HEALTHY: Margins are balanced".to_string(),
+            )
+        } else if bn_health.account_value_usd > hl_health.account_value_usd {
+            (
+                format!("Binance -> Hyperliquid (${:.2})", suggested_transfer_usd),
+                format!(
+                    "🟡 REBALANCE NEEDED: Binance holds {:.1}% of funds (Transfer ${:.2} to Hyperliquid)",
+                    (bn_health.account_value_usd / total_equity.max(1.0)) * 100.0,
+                    suggested_transfer_usd
+                ),
+            )
+        } else {
+            (
+                format!("Hyperliquid -> Binance (${:.2})", suggested_transfer_usd),
+                format!(
+                    "🟡 REBALANCE NEEDED: Hyperliquid holds {:.1}% of funds (Transfer ${:.2} to Binance)",
+                    (hl_health.account_value_usd / total_equity.max(1.0)) * 100.0,
+                    suggested_transfer_usd
+                ),
+            )
+        };
+
+        crate::types::CrossExchangeMarginAssessment {
+            binance: bn_health.clone(),
+            hyperliquid: hl_health.clone(),
+            total_equity_usd: total_equity,
+            imbalance_usd: imbalance,
+            rebalance_required,
+            suggested_transfer_usd,
+            transfer_direction,
+            risk_status,
+        }
+    }
 }

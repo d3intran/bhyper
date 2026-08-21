@@ -36,6 +36,16 @@ pub enum ExitSignal {
         max_delta_pct: f64,
         reason: String,
     },
+    MarginCritical {
+        exchange: String,
+        utilization_pct: f64,
+        reason: String,
+    },
+    LiquidationThreat {
+        exchange: String,
+        distance_pct: f64,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +65,59 @@ pub struct RiskSentinel {
 impl RiskSentinel {
     pub fn new(config: RiskConfig) -> Self {
         Self { config }
+    }
+
+    /// 评估跨所账户保证金健康度与爆仓风险
+    #[allow(dead_code)]
+    pub fn evaluate_margin_health(
+        &self,
+        assessment: &crate::types::CrossExchangeMarginAssessment,
+    ) -> ExitSignal {
+        if assessment.binance.margin_utilization_pct > self.config.max_margin_utilization_pct {
+            return ExitSignal::MarginCritical {
+                exchange: "Binance".to_string(),
+                utilization_pct: assessment.binance.margin_utilization_pct,
+                reason: format!(
+                    "币安保证金利用率达到 {:.1}% 超过安全阈值 {:.1}%",
+                    assessment.binance.margin_utilization_pct, self.config.max_margin_utilization_pct
+                ),
+            };
+        }
+
+        if assessment.hyperliquid.margin_utilization_pct > self.config.max_margin_utilization_pct {
+            return ExitSignal::MarginCritical {
+                exchange: "Hyperliquid".to_string(),
+                utilization_pct: assessment.hyperliquid.margin_utilization_pct,
+                reason: format!(
+                    "Hyperliquid 保证金利用率达到 {:.1}% 超过安全阈值 {:.1}%",
+                    assessment.hyperliquid.margin_utilization_pct, self.config.max_margin_utilization_pct
+                ),
+            };
+        }
+
+        if assessment.binance.min_liquidation_distance_pct < self.config.min_liquidation_distance_pct {
+            return ExitSignal::LiquidationThreat {
+                exchange: "Binance".to_string(),
+                distance_pct: assessment.binance.min_liquidation_distance_pct,
+                reason: format!(
+                    "币安头寸距离强平价不足 {:.1}% (阈值: {:.1}%)",
+                    assessment.binance.min_liquidation_distance_pct, self.config.min_liquidation_distance_pct
+                ),
+            };
+        }
+
+        if assessment.hyperliquid.min_liquidation_distance_pct < self.config.min_liquidation_distance_pct {
+            return ExitSignal::LiquidationThreat {
+                exchange: "Hyperliquid".to_string(),
+                distance_pct: assessment.hyperliquid.min_liquidation_distance_pct,
+                reason: format!(
+                    "Hyperliquid 头寸距离强平价不足 {:.1}% (阈值: {:.1}%)",
+                    assessment.hyperliquid.min_liquidation_distance_pct, self.config.min_liquidation_distance_pct
+                ),
+            };
+        }
+
+        ExitSignal::Hold
     }
 
     /// 评估活跃仓位的 Delta 中性健康度

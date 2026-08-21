@@ -5,6 +5,8 @@
 pub mod binance;
 pub mod config;
 pub mod hyperliquid;
+pub mod journal;
+pub mod paper;
 pub mod risk;
 pub mod state;
 pub mod strategy;
@@ -16,6 +18,12 @@ pub use binance::BinanceFuturesClient;
 pub use config::Config;
 pub use hyperliquid::signing::HyperliquidSigner;
 pub use hyperliquid::HyperliquidClient;
+pub use journal::{
+    FundingSettlementEvent, JournalEntry, JournalFilter, PerformanceAnalytics, PerformanceSummary,
+    RiskAuditEvent, SymbolPerformance, TradeCloseFillEvent, TradeIntentEvent, TradeJournal,
+    TradeOpenFillEvent,
+};
+pub use paper::{PaperDualWallet, PaperExecutionEngine, PaperPosition, PaperTradingStore, VirtualAccount};
 pub use risk::{ExitSignal, RiskAssessment, RiskSentinel};
 pub use state::StateStore;
 pub use strategy::{

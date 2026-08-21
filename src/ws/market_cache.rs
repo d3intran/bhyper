@@ -211,6 +211,12 @@ impl MarketDataCache {
             - roundtrip_cost_bps;
         let proj_8h = (hl_1h_cashflow * 8.0) + bn_8h_cashflow - roundtrip_cost_bps;
 
+        let divergence = if hl_item.index_price > 0.0 {
+            ((hl_item.mark_price - hl_item.index_price).abs() / hl_item.index_price) * 100.0
+        } else {
+            0.0
+        };
+
         Some(ArbitrageOpportunity {
             symbol: sym_upper,
             binance_mark_price: bn_item.mark_price,
@@ -229,6 +235,14 @@ impl MarketDataCache {
             projected_1h_net_bps: proj_1h,
             projected_4h_net_bps: proj_4h,
             projected_8h_net_bps: proj_8h,
+            binance_volume_24h_usd: 0.0,
+            binance_open_interest_usd: 0.0,
+            hyperliquid_open_interest_usd: 0.0,
+            total_open_interest_usd: 0.0,
+            bid_ask_spread_bps: price_spread.abs() * 100.0,
+            oracle_mark_divergence_pct: divergence,
+            is_liquid: true,
+            liquidity_tier: "STREAM_WS".to_string(),
         })
     }
 
@@ -294,6 +308,12 @@ impl MarketDataCache {
                     - roundtrip_cost_bps;
                 let proj_8h = (hl_1h_cashflow * 8.0) + bn_8h_cashflow - roundtrip_cost_bps;
 
+                let divergence = if hl_item.index_price > 0.0 {
+                    ((hl_item.mark_price - hl_item.index_price).abs() / hl_item.index_price) * 100.0
+                } else {
+                    0.0
+                };
+
                 opps.push(ArbitrageOpportunity {
                     symbol: sym.clone(),
                     binance_mark_price: bn_item.mark_price,
@@ -312,6 +332,14 @@ impl MarketDataCache {
                     projected_1h_net_bps: proj_1h,
                     projected_4h_net_bps: proj_4h,
                     projected_8h_net_bps: proj_8h,
+                    binance_volume_24h_usd: 0.0,
+                    binance_open_interest_usd: 0.0,
+                    hyperliquid_open_interest_usd: 0.0,
+                    total_open_interest_usd: 0.0,
+                    bid_ask_spread_bps: price_spread.abs() * 100.0,
+                    oracle_mark_divergence_pct: divergence,
+                    is_liquid: true,
+                    liquidity_tier: "STREAM_WS".to_string(),
                 });
             }
         }

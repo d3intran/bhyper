@@ -1,6 +1,8 @@
 mod binance;
 mod config;
 mod hyperliquid;
+mod journal;
+mod paper;
 mod risk;
 mod state;
 mod strategy;
@@ -68,6 +70,8 @@ enum Commands {
     Check,
     /// 查看本地持久化存储的所有活跃套利持仓
     Positions,
+    /// 跨所账户保证金健康度与资金再平衡建议 (Margin Health & Capital Rebalance Advisory)
+    Health,
     /// 跨所持仓对账审计 (自动核对 Binance / Hyperliquid 真实头寸与本地记录，检测孤儿腿)
     Reconcile,
     /// 启动实时利差监控与 Telegram 预警守护循环
@@ -87,6 +91,40 @@ enum Commands {
         taker_taker: bool,
         #[arg(short, long, default_value_t = 5)]
         interval_secs: u64,
+    },
+    /// 启动高严谨度虚拟模拟盘守护引擎 (双所虚拟钱包、全息滑点与手续费扣除、每小时真实资金费流水记账)
+    Paper {
+        #[arg(short, long, default_value_t = 100.0)]
+        initial_capital: f64,
+        #[arg(short, long, default_value_t = 50.0)]
+        margin_usd: f64,
+        #[arg(long, default_value_t = false)]
+        taker_taker: bool,
+        #[arg(short, long, default_value_t = 5)]
+        interval_secs: u64,
+    },
+    /// 查看并筛选全息交易流水日志 (Trade Intent, Fills, Funding Accruals, Risk Audits)
+    Journal {
+        #[arg(short, long)]
+        symbol: Option<String>,
+        #[arg(short, long)]
+        event_type: Option<String>,
+        #[arg(short, long, default_value_t = 30)]
+        limit: usize,
+        #[arg(long)]
+        paper_only: bool,
+    },
+    /// 生成机构级复盘与策略绩效分析报告 (Win Rate, PnL Attribution, Drawdown, Funding vs Fees)
+    Report {
+        #[arg(long)]
+        export_md: Option<String>,
+        #[arg(short, long, default_value_t = 100.0)]
+        initial_capital: f64,
+    },
+    /// 重置模拟盘虚拟钱包余额与持仓
+    ResetPaper {
+        #[arg(short, long, default_value_t = 100.0)]
+        initial_capital: f64,
     },
     /// 紧急手动平仓指定币种在双边的所有对冲头寸
     Unwind {
@@ -227,7 +265,14 @@ async fn main() -> Result<()> {
 
             let opps = opps_res?;
             let precisions = precisions_res.unwrap_or_default();
-            let trigger_engine = ProfitTriggerEngine::default();
+            let trigger_engine = ProfitTriggerEngine::default().with_liquidity_guards(
+                config.strategy.min_open_interest_usd,
+                config.strategy.min_24h_volume_usd,
+                config.strategy.max_bid_ask_spread_bps,
+                config.strategy.max_oracle_mark_divergence_pct,
+                config.strategy.symbol_whitelist.clone(),
+                config.strategy.symbol_blacklist.clone(),
+            );
 
             println!("\n{}", "=".repeat(130));
             println!(
@@ -408,6 +453,65 @@ async fn main() -> Result<()> {
             TelemetryNotifier::render_positions_table(&positions);
         }
 
+        Commands::Health => {
+            println!("🔍 Fetching live cross-exchange margin health and account balances...");
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+
+            let (bn_health_res, hl_health_res) = tokio::join!(
+                bn_client.fetch_margin_health(),
+                hl_client.fetch_margin_health()
+            );
+
+            let bn_health = match bn_health_res {
+                Ok(h) => h,
+                Err(e) => {
+                    warn!("Could not fetch Binance margin health (Check API keys): {:?}", e);
+                    crate::types::ExchangeMarginHealth {
+                        exchange: crate::types::Exchange::Binance,
+                        account_value_usd: 0.0,
+                        total_margin_used_usd: 0.0,
+                        free_margin_usd: 0.0,
+                        margin_utilization_pct: 0.0,
+                        min_liquidation_distance_pct: 100.0,
+                        is_healthy: true,
+                    }
+                }
+            };
+
+            let hl_health = match hl_health_res {
+                Ok(h) => h,
+                Err(e) => {
+                    warn!("Could not fetch Hyperliquid margin health (Check Wallet address): {:?}", e);
+                    crate::types::ExchangeMarginHealth {
+                        exchange: crate::types::Exchange::Hyperliquid,
+                        account_value_usd: 0.0,
+                        total_margin_used_usd: 0.0,
+                        free_margin_usd: 0.0,
+                        margin_utilization_pct: 0.0,
+                        min_liquidation_distance_pct: 100.0,
+                        is_healthy: true,
+                    }
+                }
+            };
+
+            let assessment = StateStore::compute_rebalance_advisory(
+                &bn_health,
+                &hl_health,
+                config.risk.rebalance_threshold_imbalance_pct,
+            );
+
+            TelemetryNotifier::render_margin_assessment(&assessment);
+        }
+
         Commands::Reconcile => {
             println!("🔍 Fetching live exchange positions from Binance and Hyperliquid for reconciliation...");
             let bn_client = BinanceFuturesClient::new(
@@ -421,7 +525,14 @@ async fn main() -> Result<()> {
                 config.hyperliquid.base_url.clone(),
             );
 
-            let bn_pos = match bn_client.fetch_positions().await {
+            let (bn_pos_res, hl_pos_res, bn_health_res, hl_health_res) = tokio::join!(
+                bn_client.fetch_positions(),
+                hl_client.fetch_clearinghouse_state(),
+                bn_client.fetch_margin_health(),
+                hl_client.fetch_margin_health()
+            );
+
+            let bn_pos = match bn_pos_res {
                 Ok(p) => p,
                 Err(e) => {
                     warn!("Could not fetch Binance positions: {:?}", e);
@@ -429,7 +540,7 @@ async fn main() -> Result<()> {
                 }
             };
 
-            let hl_pos = match hl_client.fetch_clearinghouse_state().await {
+            let hl_pos = match hl_pos_res {
                 Ok(s) => s.asset_positions,
                 Err(e) => {
                     warn!("Could not fetch Hyperliquid positions: {:?}", e);
@@ -437,10 +548,19 @@ async fn main() -> Result<()> {
                 }
             };
 
-            let report = {
+            let mut report = {
                 let mut store = state_store.lock();
                 store.reconcile(&bn_pos, &hl_pos)
             };
+
+            if let (Ok(bn_h), Ok(hl_h)) = (bn_health_res, hl_health_res) {
+                let assessment = StateStore::compute_rebalance_advisory(
+                    &bn_h,
+                    &hl_h,
+                    config.risk.rebalance_threshold_imbalance_pct,
+                );
+                report.margin_assessment = Some(assessment);
+            }
 
             TelemetryNotifier::render_reconciliation_report(&report);
         }
@@ -571,7 +691,7 @@ async fn main() -> Result<()> {
                 ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
                     .with_cache(cache.clone());
 
-            let executor = TwoLegExecutor::new(
+            let mut executor = TwoLegExecutor::new(
                 BinanceFuturesClient::new(
                     config.binance.api_key.clone(),
                     config.binance.api_secret.clone(),
@@ -589,10 +709,28 @@ async fn main() -> Result<()> {
             )
             .with_cache(cache.clone());
 
+            if config.strategy.use_binance_ws_api && !config.binance.api_key.is_empty() {
+                info!("⚡ Initializing Binance WebSocket API client for ultra low-latency order dispatching...");
+                let ws_api = binance::BinanceWsApiClient::spawn(
+                    config.binance.api_key.clone(),
+                    config.binance.api_secret.clone(),
+                    None,
+                );
+                executor = executor.with_ws_api(ws_api);
+            }
+
             let trigger_engine = ProfitTriggerEngine::new(
                 config.strategy.min_open_apr_pct / 8760.0 * 100.0,
                 config.strategy.max_position_usd_per_pair,
                 config.strategy.maker_taker_mode,
+            )
+            .with_liquidity_guards(
+                config.strategy.min_open_interest_usd,
+                config.strategy.min_24h_volume_usd,
+                config.strategy.max_bid_ask_spread_bps,
+                config.strategy.max_oracle_mark_divergence_pct,
+                config.strategy.symbol_whitelist.clone(),
+                config.strategy.symbol_blacklist.clone(),
             );
 
             let risk_sentinel = RiskSentinel::new(config.risk.clone());
@@ -673,7 +811,9 @@ async fn main() -> Result<()> {
                             | ExitSignal::BasisStopLoss { reason, .. }
                             | ExitSignal::BasisTakeProfit { reason, .. }
                             | ExitSignal::MaxDurationExceeded { reason, .. }
-                            | ExitSignal::DeltaDriftCritical { reason, .. } => {
+                            | ExitSignal::DeltaDriftCritical { reason, .. }
+                            | ExitSignal::MarginCritical { reason, .. }
+                            | ExitSignal::LiquidationThreat { reason, .. } => {
                                 warn!("🚨 AUTOMATIC EXIT TRIGGERED for {}: {}", pos.symbol, reason);
                                 if let Err(e) = executor.execute_close(&pos, prec, &reason).await {
                                     tracing::error!(
@@ -749,6 +889,317 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+        }
+
+        Commands::Paper {
+            initial_capital,
+            margin_usd,
+            taker_taker,
+            interval_secs,
+        } => {
+            let execution_mode = if taker_taker {
+                ExecutionMode::TakerTaker
+            } else {
+                ExecutionMode::MakerTaker
+            };
+
+            let paper_store = paper::PaperTradingStore::load_or_create(None, initial_capital)?;
+            let mut engine = paper::PaperExecutionEngine::new(paper_store);
+            let risk_sentinel = RiskSentinel::new(config.risk.clone());
+
+            let trigger_engine = ProfitTriggerEngine::new(
+                config.strategy.min_open_apr_pct / 8760.0 * 100.0,
+                config.strategy.max_position_usd_per_pair.min(margin_usd),
+                config.strategy.maker_taker_mode,
+            )
+            .with_liquidity_guards(
+                config.strategy.min_open_interest_usd,
+                config.strategy.min_24h_volume_usd,
+                config.strategy.max_bid_ask_spread_bps,
+                config.strategy.max_oracle_mark_divergence_pct,
+                config.strategy.symbol_whitelist.clone(),
+                config.strategy.symbol_blacklist.clone(),
+            );
+
+            // 1. Initialize real-time WebSocket market cache & streams
+            let cache = MarketDataCache::new();
+            BinanceWsStream::spawn(cache.clone());
+            let hl_ws_url = if config.hyperliquid.is_testnet {
+                Some("wss://api.hyperliquid-testnet.xyz/ws".to_string())
+            } else {
+                Some("wss://api.hyperliquid.xyz/ws".to_string())
+            };
+            HyperliquidWsStream::spawn(
+                cache.clone(),
+                hl_ws_url,
+                Some(config.hyperliquid.wallet_address.clone()),
+            );
+
+            info!("⏳ Warming up WebSocket feeds for Paper Trading (2s)...");
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            let bn_client = BinanceFuturesClient::new(
+                config.binance.api_key.clone(),
+                config.binance.api_secret.clone(),
+                config.binance.base_url.clone(),
+            );
+            let hl_client = HyperliquidClient::new(
+                config.hyperliquid.private_key.clone(),
+                config.hyperliquid.wallet_address.clone(),
+                config.hyperliquid.base_url.clone(),
+            );
+            let scanner =
+                ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
+                    .with_cache(cache.clone());
+
+            info!(
+                "🧪 [PAPER TRADING DAEMON] Running with ${:.2} Virtual Capital (${:.2} BN | ${:.2} HL)",
+                engine.store.state.wallet.total_equity_usd(),
+                engine.store.state.wallet.binance.total_equity_usd(),
+                engine.store.state.wallet.hyperliquid.total_equity_usd()
+            );
+
+            let mut timer = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            loop {
+                timer.tick().await;
+
+                let (opps_res, precisions_res) = tokio::join!(
+                    scanner.scan_opportunities(),
+                    scanner.fetch_symbol_precisions()
+                );
+
+                let opps = match opps_res {
+                    Ok(o) => o,
+                    Err(e) => {
+                        tracing::error!("Error scanning opportunities in paper mode: {:?}", e);
+                        continue;
+                    }
+                };
+
+                let precisions = precisions_res.unwrap_or_default();
+                let opps_map: std::collections::HashMap<String, &types::ArbitrageOpportunity> =
+                    opps.iter().map(|o| (o.symbol.clone(), o)).collect();
+
+                // 1. Funding Fee Accrual Clock Tick
+                let _ = engine.accrue_funding_payments(&opps);
+
+                // 2. Active Positions Exit Audit
+                let active_syms: Vec<String> = engine.store.state.active_positions.keys().cloned().collect();
+                for sym in active_syms {
+                    let pos = match engine.store.state.active_positions.get(&sym) {
+                        Some(p) => p.clone(),
+                        None => continue,
+                    };
+
+                    let (live_bn_px, live_hl_px) = cache
+                        .get_latest_prices(&pos.symbol)
+                        .unwrap_or((pos.binance_entry_price, pos.hyperliquid_entry_price));
+
+                    let current_opp = opps_map.get(&pos.symbol).copied();
+                    let active_pos_struct = pos.to_active_position();
+
+                    let exit_signal = risk_sentinel.evaluate_position_exit(
+                        &active_pos_struct,
+                        current_opp,
+                        live_bn_px,
+                        live_hl_px,
+                    );
+
+                    match exit_signal {
+                        ExitSignal::Hold => {}
+                        ExitSignal::SpreadDecay { reason, .. }
+                        | ExitSignal::SpreadInverted { reason, .. }
+                        | ExitSignal::BasisStopLoss { reason, .. }
+                        | ExitSignal::BasisTakeProfit { reason, .. }
+                        | ExitSignal::MaxDurationExceeded { reason, .. }
+                        | ExitSignal::DeltaDriftCritical { reason, .. }
+                        | ExitSignal::MarginCritical { reason, .. }
+                        | ExitSignal::LiquidationThreat { reason, .. } => {
+                            warn!("🚨 [PAPER AUTO EXIT] Closing position on {}: {}", sym, reason);
+                            let _ = engine.simulate_close(&sym, live_bn_px, live_hl_px, &reason);
+                        }
+                    }
+                }
+
+                // 3. New Arbitrage Opportunity Evaluation
+                let current_active_count = engine.store.state.active_positions.len();
+                if current_active_count < config.strategy.max_active_positions {
+                    let held_symbols: std::collections::HashSet<String> =
+                        engine.store.state.active_positions.keys().cloned().collect();
+
+                    for opp in &opps {
+                        if held_symbols.contains(&opp.symbol) {
+                            continue;
+                        }
+
+                        let prec = match precisions.get(&opp.symbol) {
+                            Some(p) => p,
+                            None => continue,
+                        };
+
+                        let decision = trigger_engine.evaluate_opportunity(
+                            opp,
+                            margin_usd,
+                            false, // Respect strict sniper timing window
+                            Some(prec),
+                        );
+
+                        if decision.should_open {
+                            info!(
+                                "🎯 [PAPER TRIGGER HIT] Validated arbitrage opportunity on {}: Net APR {:.2}%, Est Profit: ${:.4}",
+                                opp.symbol, opp.net_spread_apr_pct, decision.net_expected_profit_usd
+                            );
+
+                            if let Err(e) = engine.simulate_open(opp, &decision, prec, execution_mode) {
+                                warn!("Failed to simulate open on {}: {:?}", opp.symbol, e);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // 4. Print Status Dashboard
+                let total_eq = engine.store.state.wallet.total_equity_usd();
+                let realized_pnl = engine.store.state.wallet.total_realized_pnl_usd();
+                let funding_inc = engine.store.state.wallet.total_funding_income_usd();
+                let fees_paid = engine.store.state.wallet.total_fees_paid_usd();
+                let active_count = engine.store.state.active_positions.len();
+
+                println!(
+                    "🧪 [PAPER TRADING] Equity: ${:.2} (BN: ${:.2} | HL: ${:.2}) | Positions: {} | Realized PnL: ${:.4} | Funding: +${:.4} | Fees: -${:.4}",
+                    total_eq,
+                    engine.store.state.wallet.binance.total_equity_usd(),
+                    engine.store.state.wallet.hyperliquid.total_equity_usd(),
+                    active_count,
+                    realized_pnl,
+                    funding_inc,
+                    fees_paid
+                );
+            }
+        }
+
+        Commands::Journal {
+            symbol,
+            event_type,
+            limit,
+            paper_only,
+        } => {
+            let journal = journal::TradeJournal::new(None);
+            let filter = journal::JournalFilter {
+                symbol,
+                event_type,
+                limit: Some(limit),
+                is_paper: if paper_only { Some(true) } else { None },
+                ..Default::default()
+            };
+
+            let entries = journal.query(&filter)?;
+            println!("\n{}", "=".repeat(125));
+            println!("📖 BHyper Detailed Trade Execution Journal (Chronological Ledger)");
+            println!("{}", "=".repeat(125));
+            println!(
+                "{:<20} {:<10} {:<8} {:<10} {:<45} {:<18}",
+                "Timestamp (UTC)", "Event", "Symbol", "Mode", "Details / Execution", "PnL / Value"
+            );
+            println!("{}", "-".repeat(125));
+
+            if entries.is_empty() {
+                println!("  (No journal entries matching query filter found)");
+            } else {
+                for e in entries {
+                    let mode_tag = if e.is_paper() { "🧪 PAPER" } else { "⚡ LIVE" };
+                    let t_str = e.timestamp().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    match e {
+                        journal::JournalEntry::Intent(i) => {
+                            println!(
+                                "{:<20} {:<10} {:<8} {:<10} {:<45} ${:<17.2}",
+                                t_str,
+                                "INTENT",
+                                i.symbol,
+                                mode_tag,
+                                format!("Spread: {:.1}% | HL:{} BN:{}", i.net_spread_apr_pct, i.hyperliquid_side, i.binance_side),
+                                i.target_notional_usd
+                            );
+                        }
+                        journal::JournalEntry::OpenFill(o) => {
+                            println!(
+                                "{:<20} {:<10} {:<8} {:<10} {:<45} ${:<17.2}",
+                                t_str,
+                                "OPEN_FILL",
+                                o.symbol,
+                                mode_tag,
+                                format!("HL: ${:.4} | BN: ${:.4} (Fee: ${:.4})", o.hyperliquid_price, o.binance_price, o.total_open_fees_usd),
+                                o.total_notional_usd
+                            );
+                        }
+                        journal::JournalEntry::Funding(f) => {
+                            println!(
+                                "{:<20} {:<10} {:<8} {:<10} {:<45} ${:<17.4}",
+                                t_str,
+                                "FUNDING",
+                                f.symbol,
+                                mode_tag,
+                                format!("{}: {:.2} bps | Cum: ${:.4}", f.exchange, f.rate_bps, f.cumulative_funding_usd),
+                                f.funding_payment_usd
+                            );
+                        }
+                        journal::JournalEntry::RiskAlert(r) => {
+                            println!(
+                                "{:<20} {:<10} {:<8} {:<10} {:<45} {:<18}",
+                                t_str,
+                                "RISK",
+                                r.symbol,
+                                mode_tag,
+                                format!("{}: {}", r.event_type, r.details),
+                                r.action_taken
+                            );
+                        }
+                        journal::JournalEntry::CloseFill(c) => {
+                            println!(
+                                "{:<20} {:<10} {:<8} {:<10} {:<45} ${:<17.4}",
+                                t_str,
+                                "CLOSE_FILL",
+                                c.symbol,
+                                mode_tag,
+                                format!("Held: {:.1}h | Funding: ${:.4} | Fees: ${:.4}", c.holding_duration_secs as f64 / 3600.0, c.gross_funding_earned_usd, c.total_roundtrip_fees_usd),
+                                c.net_realized_pnl_usd
+                            );
+                        }
+                    }
+                }
+            }
+            println!("{}\n", "=".repeat(125));
+        }
+
+        Commands::Report {
+            export_md,
+            initial_capital,
+        } => {
+            let journal = journal::TradeJournal::new(None);
+            let entries = journal.read_all()?;
+            let summary = journal::PerformanceAnalytics::compute_from_entries(&entries, initial_capital);
+
+            journal::PerformanceAnalytics::render_console_summary(&summary);
+
+            if let Some(md_path) = export_md {
+                let md_content = journal::PerformanceAnalytics::render_markdown_report(&summary);
+                let target = std::path::PathBuf::from(md_path);
+                if let Some(p) = target.parent() {
+                    let _ = std::fs::create_dir_all(p);
+                }
+                std::fs::write(&target, md_content)?;
+                println!("📄 Exported markdown review report to: {}", target.display());
+            }
+        }
+
+        Commands::ResetPaper { initial_capital } => {
+            let mut store = paper::PaperTradingStore::load_or_create(None, initial_capital)?;
+            store.reset(initial_capital)?;
+            println!(
+                "✅ Reset paper trading state successfully. Virtual capital set to ${:.2}.",
+                initial_capital
+            );
         }
 
         Commands::Unwind { symbol } => {

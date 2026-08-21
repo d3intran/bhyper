@@ -29,6 +29,12 @@ pub struct ProfitTriggerEngine {
     pub max_notional_usd: f64,   // 单笔最大名义价值 (例如 $50 用于小资金)
     pub sniper_window_secs: (u32, u32), // 狙击窗口: (最小秒数 10s, 最大秒数 60s)
     pub maker_taker_mode: bool,
+    pub min_open_interest_usd: f64,
+    pub min_24h_volume_usd: f64,
+    pub max_bid_ask_spread_bps: f64,
+    pub max_oracle_mark_divergence_pct: f64,
+    pub symbol_whitelist: Vec<String>,
+    pub symbol_blacklist: Vec<String>,
 }
 
 impl Default for ProfitTriggerEngine {
@@ -40,18 +46,46 @@ impl Default for ProfitTriggerEngine {
             max_notional_usd: 50.0,       // 针对 $100 初始小本金
             sniper_window_secs: (10, 60), // 整点前 10s ~ 60s 触发
             maker_taker_mode: true,
+            min_open_interest_usd: 300_000.0,
+            min_24h_volume_usd: 500_000.0,
+            max_bid_ask_spread_bps: 25.0,
+            max_oracle_mark_divergence_pct: 0.6,
+            symbol_whitelist: Vec::new(),
+            symbol_blacklist: vec!["USTC".into(), "LUNC".into()],
         }
     }
 }
 
 impl ProfitTriggerEngine {
-    pub fn new(min_net_profit_bps: f64, max_notional_usd: f64, maker_taker_mode: bool) -> Self {
+    pub fn new(
+        min_net_profit_bps: f64,
+        max_notional_usd: f64,
+        maker_taker_mode: bool,
+    ) -> Self {
         Self {
             min_net_profit_bps,
             max_notional_usd,
             maker_taker_mode,
             ..Default::default()
         }
+    }
+
+    pub fn with_liquidity_guards(
+        mut self,
+        min_open_interest_usd: f64,
+        min_24h_volume_usd: f64,
+        max_bid_ask_spread_bps: f64,
+        max_oracle_mark_divergence_pct: f64,
+        whitelist: Vec<String>,
+        blacklist: Vec<String>,
+    ) -> Self {
+        self.min_open_interest_usd = min_open_interest_usd;
+        self.min_24h_volume_usd = min_24h_volume_usd;
+        self.max_bid_ask_spread_bps = max_bid_ask_spread_bps;
+        self.max_oracle_mark_divergence_pct = max_oracle_mark_divergence_pct;
+        self.symbol_whitelist = whitelist;
+        self.symbol_blacklist = blacklist;
+        self
     }
 
     /// 计算当前距离下一个整点结算还有多少秒
@@ -96,7 +130,137 @@ impl ProfitTriggerEngine {
         let secs_left = Self::seconds_until_next_hour_at(&now);
         let is_bn_settlement = Self::is_binance_settlement_hour_at(&now);
 
-        // 1. 时间窗口锁 (Timing Sniper Lock)
+        // 0. 黑白名单锁 (Whitelist / Blacklist Guard)
+        if self.symbol_blacklist.iter().any(|b| b.eq_ignore_ascii_case(&opp.symbol)) {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!("标的 {} 在系统黑名单中", opp.symbol)),
+            };
+        }
+
+        if !self.symbol_whitelist.is_empty()
+            && !self.symbol_whitelist.iter().any(|w| w.eq_ignore_ascii_case(&opp.symbol))
+        {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!("标的 {} 不在策略白名单中", opp.symbol)),
+            };
+        }
+
+        // 1. 流动性与持仓量锁 (Liquidity & Open Interest Guard)
+        if opp.total_open_interest_usd > 0.0 && opp.total_open_interest_usd < self.min_open_interest_usd {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!(
+                    "持仓量 OI ${:.0} 低于门槛 ${:.0} (小币种操纵风险)",
+                    opp.total_open_interest_usd, self.min_open_interest_usd
+                )),
+            };
+        }
+
+        if opp.binance_volume_24h_usd > 0.0 && opp.binance_volume_24h_usd < self.min_24h_volume_usd {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!(
+                    "24h 成交额 ${:.0} 低于门槛 ${:.0} (流动性不足)",
+                    opp.binance_volume_24h_usd, self.min_24h_volume_usd
+                )),
+            };
+        }
+
+        if opp.bid_ask_spread_bps > self.max_bid_ask_spread_bps {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!(
+                    "买卖价差 {:.1} bps 超过限制 {:.1} bps",
+                    opp.bid_ask_spread_bps, self.max_bid_ask_spread_bps
+                )),
+            };
+        }
+
+        if opp.oracle_mark_divergence_pct > self.max_oracle_mark_divergence_pct {
+            return TriggerDecision {
+                symbol: opp.symbol.clone(),
+                should_open: false,
+                hl_side: opp.hyperliquid_side,
+                bn_side: opp.binance_side,
+                target_notional_usd: 0.0,
+                aligned_quantity: None,
+                single_cycle_income_bps: 0.0,
+                total_friction_cost_bps: 0.0,
+                net_expected_profit_bps: 0.0,
+                net_expected_profit_usd: 0.0,
+                seconds_to_settlement: secs_left,
+                is_binance_settlement_next: is_bn_settlement,
+                projected_4h_net_bps: 0.0,
+                reject_reason: Some(format!(
+                    "标记价与预言机偏离 {:.2}% 超过阈值 {:.2}% (费率突变风险)",
+                    opp.oracle_mark_divergence_pct, self.max_oracle_mark_divergence_pct
+                )),
+            };
+        }
+
+        // 2. 时间窗口锁 (Timing Sniper Lock)
         let in_window = ignore_window
             || (secs_left >= self.sniper_window_secs.0 && secs_left <= self.sniper_window_secs.1);
         if !in_window {

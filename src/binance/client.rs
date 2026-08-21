@@ -50,6 +50,43 @@ pub struct BinancePositionRiskItem {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Binance24hrTicker {
+    symbol: String,
+    quote_volume: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct BinanceBookTickerItem {
+    symbol: String,
+    bid_price: String,
+    ask_price: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct BinanceAccountInfoResponse {
+    pub total_margin_balance: String,
+    pub total_maint_margin: String,
+    pub total_initial_margin: String,
+    pub available_balance: String,
+    pub positions: Vec<BinanceAccountPosition>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct BinanceAccountPosition {
+    pub symbol: String,
+    pub position_amt: String,
+    pub entry_price: String,
+    pub unrealized_profit: String,
+    pub maint_margin: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct ExchangeInfoResponse {
     symbols: Vec<ExchangeInfoSymbol>,
 }
@@ -238,6 +275,122 @@ impl BinanceFuturesClient {
         }
 
         Ok(results)
+    }
+
+    /// Fetches 24h rolling quote volume in USDT for all active USDT-margined pairs
+    pub async fn fetch_24h_volumes(&self) -> Result<HashMap<String, f64>> {
+        let url = format!("{}/fapi/v1/ticker/24hr", self.base_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to request Binance 24hr ticker")?;
+
+        let items: Vec<Binance24hrTicker> = resp
+            .json()
+            .await
+            .context("Failed to parse Binance 24hr ticker JSON")?;
+
+        let mut volumes = HashMap::with_capacity(items.len());
+        for item in items {
+            if item.symbol.ends_with("USDT") {
+                let base = item.symbol.trim_end_matches("USDT").to_string();
+                let vol = item.quote_volume.parse::<f64>().unwrap_or(0.0);
+                volumes.insert(base, vol);
+            }
+        }
+
+        Ok(volumes)
+    }
+
+    /// Fetches best bid and ask prices from bookTicker to compute spread
+    pub async fn fetch_book_tickers(&self) -> Result<HashMap<String, (f64, f64)>> {
+        let url = format!("{}/fapi/v1/ticker/bookTicker", self.base_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to request Binance bookTicker")?;
+
+        let items: Vec<BinanceBookTickerItem> = resp
+            .json()
+            .await
+            .context("Failed to parse Binance bookTicker JSON")?;
+
+        let mut map = HashMap::with_capacity(items.len());
+        for item in items {
+            if item.symbol.ends_with("USDT") {
+                let base = item.symbol.trim_end_matches("USDT").to_string();
+                let bid = item.bid_price.parse::<f64>().unwrap_or(0.0);
+                let ask = item.ask_price.parse::<f64>().unwrap_or(0.0);
+                map.insert(base, (bid, ask));
+            }
+        }
+
+        Ok(map)
+    }
+
+    /// Fetches account margin health and liquidation risk assessment
+    pub async fn fetch_margin_health(&self) -> Result<crate::types::ExchangeMarginHealth> {
+        if self.api_key.is_empty() || self.api_secret.is_empty() {
+            anyhow::bail!("Binance API key and secret are not configured");
+        }
+        let query = format!("timestamp={}", Self::timestamp_ms());
+        let signed_query = self.sign_query(&query);
+        let url = format!("{}/fapi/v2/account?{}", self.base_url, signed_query);
+
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to request Binance account info")?;
+
+        let info: BinanceAccountInfoResponse = resp
+            .json()
+            .await
+            .context("Failed to parse Binance account JSON")?;
+
+        let total_margin_balance = info.total_margin_balance.parse::<f64>().unwrap_or(0.0);
+        let total_maint_margin = info.total_maint_margin.parse::<f64>().unwrap_or(0.0);
+        let available_balance = info.available_balance.parse::<f64>().unwrap_or(0.0);
+
+        let margin_utilization_pct = if total_margin_balance > 0.0 {
+            (total_maint_margin / total_margin_balance) * 100.0
+        } else {
+            0.0
+        };
+
+        // Estimate min liquidation distance across active positions
+        let mut min_liq_dist_pct = 100.0;
+        for p in &info.positions {
+            let amt = p.position_amt.parse::<f64>().unwrap_or(0.0);
+            if amt.abs() > 1e-6 {
+                let entry_p = p.entry_price.parse::<f64>().unwrap_or(0.0);
+                let maint_m = p.maint_margin.parse::<f64>().unwrap_or(0.0);
+                if total_margin_balance > 0.0 && maint_m > 0.0 {
+                    let buffer = (total_margin_balance - maint_m) / (amt.abs() * entry_p.max(1.0));
+                    let dist_pct = (buffer * 100.0).clamp(0.0, 100.0);
+                    if dist_pct < min_liq_dist_pct {
+                        min_liq_dist_pct = dist_pct;
+                    }
+                }
+            }
+        }
+
+        let is_healthy = margin_utilization_pct < 75.0 && min_liq_dist_pct > 20.0;
+
+        Ok(crate::types::ExchangeMarginHealth {
+            exchange: Exchange::Binance,
+            account_value_usd: total_margin_balance,
+            total_margin_used_usd: total_maint_margin,
+            free_margin_usd: available_balance,
+            margin_utilization_pct,
+            min_liquidation_distance_pct: min_liq_dist_pct,
+            is_healthy,
+        })
     }
 
     /// Fetches account USDT balance & margin info

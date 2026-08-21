@@ -191,8 +191,8 @@ impl HyperliquidClient {
         Ok(meta)
     }
 
-    /// Fetches all active Hyperliquid universe and funding rate contexts
-    pub async fn fetch_all_funding_rates(&self) -> Result<Vec<FundingRateInfo>> {
+    /// Fetches all active Hyperliquid universe and funding rate contexts along with raw asset contexts
+    pub async fn fetch_meta_and_contexts(&self) -> Result<(MetaPart, Vec<AssetCtxItem>)> {
         let url = format!("{}/info", self.base_url);
         let payload = json!({ "type": "metaAndAssetCtxs" });
 
@@ -208,6 +208,13 @@ impl HyperliquidClient {
             .json()
             .await
             .context("Failed to parse Hyperliquid metaAndAssetCtxs JSON")?;
+
+        Ok((meta, ctxs))
+    }
+
+    /// Fetches all active Hyperliquid universe and funding rate contexts
+    pub async fn fetch_all_funding_rates(&self) -> Result<Vec<FundingRateInfo>> {
+        let (meta, ctxs) = self.fetch_meta_and_contexts().await?;
 
         let mut results = Vec::with_capacity(meta.universe.len());
 
@@ -263,6 +270,55 @@ impl HyperliquidClient {
             .context("Failed to parse Hyperliquid clearinghouseState JSON")?;
 
         Ok(state)
+    }
+
+    /// Fetches Hyperliquid margin health and liquidation risk assessment
+    pub async fn fetch_margin_health(&self) -> Result<crate::types::ExchangeMarginHealth> {
+        let state = self.fetch_clearinghouse_state().await?;
+
+        let account_value = state.margin_summary.account_value.parse::<f64>().unwrap_or(0.0);
+        let total_margin_used = state.margin_summary.total_margin_used.parse::<f64>().unwrap_or(0.0);
+        let total_raw_usd = state.margin_summary.total_raw_usd.parse::<f64>().unwrap_or(0.0);
+
+        let margin_utilization_pct = if account_value > 0.0 {
+            (total_margin_used / account_value) * 100.0
+        } else {
+            0.0
+        };
+
+        let mut min_liq_dist_pct = 100.0;
+        for pos_wrapper in &state.asset_positions {
+            let pos = &pos_wrapper.position;
+            let sz = pos.szi.parse::<f64>().unwrap_or(0.0);
+            if sz.abs() > 1e-6 {
+                if let Some(liq_str) = &pos.liquidation_px {
+                    if let Ok(liq_px) = liq_str.parse::<f64>() {
+                        if let Some(entry_str) = &pos.entry_px {
+                            if let Ok(entry_px) = entry_str.parse::<f64>() {
+                                if entry_px > 0.0 {
+                                    let dist = ((entry_px - liq_px).abs() / entry_px) * 100.0;
+                                    if dist < min_liq_dist_pct {
+                                        min_liq_dist_pct = dist;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let is_healthy = margin_utilization_pct < 75.0 && min_liq_dist_pct > 20.0;
+
+        Ok(crate::types::ExchangeMarginHealth {
+            exchange: Exchange::Hyperliquid,
+            account_value_usd: account_value,
+            total_margin_used_usd: total_margin_used,
+            free_margin_usd: total_raw_usd,
+            margin_utilization_pct,
+            min_liquidation_distance_pct: min_liq_dist_pct,
+            is_healthy,
+        })
     }
 
     /// 获取当前用户的挂单列表

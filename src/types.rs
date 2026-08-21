@@ -89,6 +89,14 @@ pub struct ArbitrageOpportunity {
     pub projected_1h_net_bps: f64,
     pub projected_4h_net_bps: f64,
     pub projected_8h_net_bps: f64,
+    pub binance_volume_24h_usd: f64,
+    pub binance_open_interest_usd: f64,
+    pub hyperliquid_open_interest_usd: f64,
+    pub total_open_interest_usd: f64,
+    pub bid_ask_spread_bps: f64,
+    pub oracle_mark_divergence_pct: f64,
+    pub is_liquid: bool,
+    pub liquidity_tier: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,6 +190,29 @@ pub struct BalanceInfo {
     pub margin_usage_pct: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExchangeMarginHealth {
+    pub exchange: Exchange,
+    pub account_value_usd: f64,
+    pub total_margin_used_usd: f64,
+    pub free_margin_usd: f64,
+    pub margin_utilization_pct: f64,
+    pub min_liquidation_distance_pct: f64,
+    pub is_healthy: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrossExchangeMarginAssessment {
+    pub binance: ExchangeMarginHealth,
+    pub hyperliquid: ExchangeMarginHealth,
+    pub total_equity_usd: f64,
+    pub imbalance_usd: f64,
+    pub rebalance_required: bool,
+    pub suggested_transfer_usd: f64,
+    pub transfer_direction: String,
+    pub risk_status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReconciliationReport {
     pub is_consistent: bool,
@@ -189,5 +220,6 @@ pub struct ReconciliationReport {
     pub orphaned_binance_positions: Vec<String>,
     pub orphaned_hyperliquid_positions: Vec<String>,
     pub delta_discrepancies: Vec<(String, f64)>, // (Symbol, Discrepancy USD)
+    pub margin_assessment: Option<CrossExchangeMarginAssessment>,
     pub warnings: Vec<String>,
 }
