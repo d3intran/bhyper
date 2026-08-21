@@ -1315,14 +1315,35 @@ async fn main() -> Result<()> {
                         0.0, // Force evaluate for manual test
                         margin_usd,
                         config.strategy.maker_taker_mode,
+                    )
+                    .with_liquidity_guards(
+                        0.0,
+                        0.0,
+                        100.0,
+                        100.0,
+                        vec![],
+                        vec![],
                     );
 
-                    let decision = trigger_engine.evaluate_opportunity(
+                    let mut decision = trigger_engine.evaluate_opportunity(
                         opp,
                         margin_usd,
                         true, // ignore_window for manual test
                         Some(prec),
                     );
+
+                    if decision.aligned_quantity.is_none() {
+                        let aligned = LotPrecisionMatcher::calculate_aligned_quantity(
+                            &opp.symbol,
+                            opp.hyperliquid_mark_price,
+                            margin_usd,
+                            prec,
+                        );
+                        if aligned.is_aligned {
+                            decision.aligned_quantity = Some(aligned);
+                            decision.should_open = true;
+                        }
+                    }
 
                     println!("\n{}", "=".repeat(100));
                     println!(
