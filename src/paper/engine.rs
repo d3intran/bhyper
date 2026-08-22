@@ -9,7 +9,7 @@ use crate::types::{
     SymbolPrecisionInfo,
 };
 use anyhow::{bail, Context, Result};
-use chrono::{DateTime, Duration, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -338,17 +338,21 @@ impl PaperExecutionEngine {
                 None => continue,
             };
 
-            // 1. Hyperliquid 1-Hour Settlement Check (Settles every hour)
-            let hl_elapsed = now.signed_duration_since(pos.last_hl_funding_time);
-            if hl_elapsed >= Duration::hours(1) {
+            // 1. Hyperliquid 1-Hour Settlement Check (Settles at every UTC top-of-hour: XX:00:00)
+            let now_hl_epoch_hour = now.timestamp() / 3600;
+            let last_hl_epoch_hour = pos.last_hl_funding_time.timestamp() / 3600;
+
+            if now_hl_epoch_hour > last_hl_epoch_hour {
+                let hours_elapsed = (now_hl_epoch_hour - last_hl_epoch_hour) as f64;
                 let rate_1h = opp.hyperliquid_rate_1h_pct / 100.0;
                 let hl_notional = pos.hyperliquid_qty * opp.hyperliquid_mark_price;
                 // If Short: receives positive funding rate, pays negative
                 // If Long: pays positive funding rate, receives negative
-                let hl_cashflow = match pos.hyperliquid_side {
+                let hl_single_cashflow = match pos.hyperliquid_side {
                     PositionSide::Short => hl_notional * rate_1h,
                     PositionSide::Long => -hl_notional * rate_1h,
                 };
+                let hl_cashflow = hl_single_cashflow * hours_elapsed;
 
                 self.store
                     .state
@@ -358,7 +362,7 @@ impl PaperExecutionEngine {
                 pos.accumulated_hl_funding_usd += hl_cashflow;
                 pos.total_funding_usd += hl_cashflow;
                 pos.last_hl_funding_time = now;
-                pos.funding_ticks_count += 1;
+                pos.funding_ticks_count += hours_elapsed as u32;
 
                 let event = FundingSettlementEvent {
                     id: format!("fund-hl-{}-{}", sym, now.timestamp_millis()),
@@ -380,30 +384,30 @@ impl PaperExecutionEngine {
                 events.push(event);
 
                 info!(
-                    "💰 [PAPER FUNDING ACCRUAL] Hyperliquid 1h settlement on {}: Payment ${:.4} (Rate: {:.2} bps)",
-                    sym, hl_cashflow, rate_1h * 10_000.0
+                    "💰 [PAPER FUNDING ACCRUAL] Hyperliquid 1h top-of-hour settlement on {}: Payment ${:.4} (Rate: {:.2} bps, {}h)",
+                    sym, hl_cashflow, rate_1h * 10_000.0, hours_elapsed
                 );
             }
 
             // 2. Binance 8-Hour Settlement Check (Settles at 00:00, 08:00, 16:00 UTC)
-            let bn_elapsed = now.signed_duration_since(pos.last_bn_funding_time);
-            let is_settlement_hour =
-                now.minute() == 0 && (now.hour() == 0 || now.hour() == 8 || now.hour() == 16);
-            if bn_elapsed >= Duration::hours(8)
-                || (is_settlement_hour && bn_elapsed >= Duration::minutes(30))
-            {
+            let now_bn_8h_slot = now.timestamp() / (8 * 3600);
+            let last_bn_8h_slot = pos.last_bn_funding_time.timestamp() / (8 * 3600);
+
+            if now_bn_8h_slot > last_bn_8h_slot {
+                let slots_elapsed = (now_bn_8h_slot - last_bn_8h_slot) as f64;
                 let rate_8h = opp.binance_rate_8h_pct / 100.0;
                 let bn_notional = pos.binance_qty * opp.binance_mark_price;
-                let bn_cashflow = match pos.binance_side {
+                let bn_single_cashflow = match pos.binance_side {
                     PositionSide::Short => bn_notional * rate_8h,
                     PositionSide::Long => -bn_notional * rate_8h,
                 };
+                let bn_cashflow = bn_single_cashflow * slots_elapsed;
 
                 self.store.state.wallet.binance.apply_funding(bn_cashflow);
                 pos.accumulated_bn_funding_usd += bn_cashflow;
                 pos.total_funding_usd += bn_cashflow;
                 pos.last_bn_funding_time = now;
-                pos.funding_ticks_count += 1;
+                pos.funding_ticks_count += (slots_elapsed as u32) * 8;
 
                 let event = FundingSettlementEvent {
                     id: format!("fund-bn-{}-{}", sym, now.timestamp_millis()),

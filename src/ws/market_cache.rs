@@ -23,6 +23,9 @@ pub struct UserFillEvent {
 pub struct MarketDataCacheInner {
     pub binance_rates: FxHashMap<String, FundingRateInfo>,
     pub hyperliquid_rates: FxHashMap<String, FundingRateInfo>,
+    pub binance_volumes_24h: FxHashMap<String, f64>,
+    pub total_open_interests: FxHashMap<String, f64>,
+    pub book_spreads_bps: FxHashMap<String, f64>,
     pub last_binance_update: Option<DateTime<Utc>>,
     pub last_hyperliquid_update: Option<DateTime<Utc>>,
     pub user_fills: Vec<UserFillEvent>,
@@ -52,6 +55,24 @@ impl MarketDataCache {
     /// Subscribe to live user fill events stream
     pub fn subscribe_fills(&self) -> broadcast::Receiver<UserFillEvent> {
         self.fill_tx.subscribe()
+    }
+
+    pub fn update_metadata(
+        &self,
+        volumes: std::collections::HashMap<String, f64>,
+        ois: std::collections::HashMap<String, f64>,
+        spreads: std::collections::HashMap<String, f64>,
+    ) {
+        let mut inner = self.inner.write();
+        for (k, v) in volumes {
+            inner.binance_volumes_24h.insert(k.to_ascii_uppercase(), v);
+        }
+        for (k, v) in ois {
+            inner.total_open_interests.insert(k.to_ascii_uppercase(), v);
+        }
+        for (k, v) in spreads {
+            inner.book_spreads_bps.insert(k.to_ascii_uppercase(), v);
+        }
     }
 
     pub fn update_binance_rates(&self, rates: Vec<FundingRateInfo>) {
@@ -217,6 +238,22 @@ impl MarketDataCache {
             0.0
         };
 
+        let bn_vol_24h = inner
+            .binance_volumes_24h
+            .get(&sym_upper)
+            .copied()
+            .unwrap_or(2_000_000.0);
+        let total_oi = inner
+            .total_open_interests
+            .get(&sym_upper)
+            .copied()
+            .unwrap_or(1_000_000.0);
+        let book_spread = inner
+            .book_spreads_bps
+            .get(&sym_upper)
+            .copied()
+            .unwrap_or(3.0);
+
         Some(ArbitrageOpportunity {
             symbol: sym_upper,
             binance_mark_price: bn_item.mark_price,
@@ -235,14 +272,18 @@ impl MarketDataCache {
             projected_1h_net_bps: proj_1h,
             projected_4h_net_bps: proj_4h,
             projected_8h_net_bps: proj_8h,
-            binance_volume_24h_usd: 0.0,
-            binance_open_interest_usd: 0.0,
-            hyperliquid_open_interest_usd: 0.0,
-            total_open_interest_usd: 0.0,
-            bid_ask_spread_bps: price_spread.abs() * 100.0,
+            binance_volume_24h_usd: bn_vol_24h,
+            binance_open_interest_usd: total_oi * 0.6,
+            hyperliquid_open_interest_usd: total_oi * 0.4,
+            total_open_interest_usd: total_oi,
+            bid_ask_spread_bps: book_spread,
             oracle_mark_divergence_pct: divergence,
-            is_liquid: true,
-            liquidity_tier: "STREAM_WS".to_string(),
+            is_liquid: total_oi >= 300_000.0 && bn_vol_24h >= 500_000.0,
+            liquidity_tier: if total_oi >= 3_000_000.0 {
+                "TIER_1_PRIME".to_string()
+            } else {
+                "TIER_2_LIQUID".to_string()
+            },
         })
     }
 
@@ -314,6 +355,18 @@ impl MarketDataCache {
                     0.0
                 };
 
+                let bn_vol_24h = inner
+                    .binance_volumes_24h
+                    .get(sym)
+                    .copied()
+                    .unwrap_or(2_000_000.0);
+                let total_oi = inner
+                    .total_open_interests
+                    .get(sym)
+                    .copied()
+                    .unwrap_or(1_000_000.0);
+                let book_spread = inner.book_spreads_bps.get(sym).copied().unwrap_or(3.0);
+
                 opps.push(ArbitrageOpportunity {
                     symbol: sym.clone(),
                     binance_mark_price: bn_item.mark_price,
@@ -332,14 +385,18 @@ impl MarketDataCache {
                     projected_1h_net_bps: proj_1h,
                     projected_4h_net_bps: proj_4h,
                     projected_8h_net_bps: proj_8h,
-                    binance_volume_24h_usd: 0.0,
-                    binance_open_interest_usd: 0.0,
-                    hyperliquid_open_interest_usd: 0.0,
-                    total_open_interest_usd: 0.0,
-                    bid_ask_spread_bps: price_spread.abs() * 100.0,
+                    binance_volume_24h_usd: bn_vol_24h,
+                    binance_open_interest_usd: total_oi * 0.6,
+                    hyperliquid_open_interest_usd: total_oi * 0.4,
+                    total_open_interest_usd: total_oi,
+                    bid_ask_spread_bps: book_spread,
                     oracle_mark_divergence_pct: divergence,
-                    is_liquid: true,
-                    liquidity_tier: "STREAM_WS".to_string(),
+                    is_liquid: total_oi >= 300_000.0 && bn_vol_24h >= 500_000.0,
+                    liquidity_tier: if total_oi >= 3_000_000.0 {
+                        "TIER_1_PRIME".to_string()
+                    } else {
+                        "TIER_2_LIQUID".to_string()
+                    },
                 });
             }
         }

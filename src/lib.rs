@@ -3,6 +3,7 @@
 //! A high-performance, delta-neutral funding rate and basis arbitrage framework written in pure Rust.
 
 pub mod binance;
+pub mod cli;
 pub mod config;
 pub mod hyperliquid;
 pub mod journal;

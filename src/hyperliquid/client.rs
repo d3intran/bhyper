@@ -384,10 +384,7 @@ impl HyperliquidClient {
             "Gtc" // Good-Til-Cancelled
         };
 
-        let price_str = format!("{:.6}", price)
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string();
+        let price_str = crate::strategy::precision::LotPrecisionMatcher::format_hyperliquid_price(price);
         let size_str = format!("{:.6}", size)
             .trim_end_matches('0')
             .trim_end_matches('.')

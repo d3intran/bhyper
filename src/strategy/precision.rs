@@ -194,4 +194,42 @@ impl LotPrecisionMatcher {
             }
         }
     }
+
+    /// 格式化 Hyperliquid 订单价格 (严格遵循 L1 规则: 最多 5 位有效数字，最多 6 位小数，且 >= 100000 时为整数)
+    pub fn format_hyperliquid_price(price: f64) -> String {
+        if price <= 0.0 {
+            return "0".to_string();
+        }
+        if price >= 100_000.0 {
+            return format!("{:.0}", price.round());
+        }
+
+        let magnitude = price.log10().floor() as i32;
+        let decimals = (4 - magnitude).clamp(0, 6) as usize;
+        let factor = 10_f64.powi(decimals as i32);
+        let rounded = (price * factor).round() / factor;
+
+        let s = format!("{:.prec$}", rounded, prec = decimals);
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
+    }
+
+    /// 格式化 Hyperliquid 下单数量 (严格对齐 sz_decimals)
+    pub fn format_hyperliquid_size(size: f64, sz_decimals: u32) -> String {
+        if size <= 0.0 {
+            return "0".to_string();
+        }
+        let decimals = sz_decimals.min(8) as usize;
+        let factor = 10_f64.powi(decimals as i32);
+        let rounded = (size * factor).floor() / factor;
+        let s = format!("{:.prec$}", rounded, prec = decimals);
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
+    }
 }

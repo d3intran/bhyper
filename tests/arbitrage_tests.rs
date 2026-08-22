@@ -288,6 +288,7 @@ fn test_risk_sentinel_exit_signals_comprehensive() {
         max_margin_utilization_pct: 75.0,
         min_liquidation_distance_pct: 20.0,
         rebalance_threshold_imbalance_pct: 30.0,
+        ..Default::default()
     };
     let sentinel = RiskSentinel::new(risk_config);
 
@@ -865,4 +866,107 @@ fn test_performance_analytics_pnl_attribution_and_summary() {
     let md_report = PerformanceAnalytics::render_markdown_report(&summary);
     assert!(md_report.contains("Executive Summary"));
     assert!(md_report.contains("Win Rate"));
+}
+
+#[test]
+fn test_hyperliquid_5_sig_figs_price_formatting() {
+    use bhyper::strategy::LotPrecisionMatcher;
+
+    // Prices with various scales obeying 5 sig-figs & max 6 decimals
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(1234.56), "1234.6");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(123.456), "123.46");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(12.3456), "12.346");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(1.23456), "1.2346");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(0.123456), "0.12346");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(0.0123456), "0.012346");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(65432.1), "65432");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(105432.0), "105432");
+
+    // Size formatting adhering strictly to sz_decimals
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(1.23456, 2), "1.23");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(1.23456, 4), "1.2345");
+    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(10.000, 1), "10");
+}
+
+#[test]
+fn test_paper_engine_utc_hour_top_funding_settlement() {
+    use bhyper::paper::engine::{PaperExecutionEngine, PaperTradingStore};
+    use bhyper::strategy::trigger::ProfitTriggerEngine;
+
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "bhyper_paper_clock_test_{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
+    let state_file = tmp_dir.join("paper_clock_state.json");
+    let store = PaperTradingStore::load_or_create(Some(state_file), 100.0).unwrap();
+    let mut engine = PaperExecutionEngine::new(store);
+
+    let opp = ArbitrageOpportunity {
+        symbol: "SUI".into(),
+        binance_mark_price: 3.0,
+        hyperliquid_mark_price: 3.0,
+        price_spread_pct: 0.0,
+        binance_rate_8h_pct: 0.01,
+        hyperliquid_rate_1h_pct: 0.05,
+        binance_apr_pct: 10.95,
+        hyperliquid_apr_pct: 438.0,
+        net_spread_apr_pct: 427.05,
+        hyperliquid_side: PositionSide::Short,
+        binance_side: PositionSide::Long,
+        est_hourly_return_bps: 4.88,
+        est_break_even_hours: 2.45,
+        is_binance_settlement_next: false,
+        projected_1h_net_bps: 4.0,
+        projected_4h_net_bps: 18.0,
+        projected_8h_net_bps: 38.0,
+        binance_volume_24h_usd: 10_000_000.0,
+        binance_open_interest_usd: 2_000_000.0,
+        hyperliquid_open_interest_usd: 2_000_000.0,
+        total_open_interest_usd: 4_000_000.0,
+        bid_ask_spread_bps: 1.0,
+        oracle_mark_divergence_pct: 0.02,
+        is_liquid: true,
+        liquidity_tier: "TIER_1_PRIME".to_string(),
+    };
+
+    let prec = SymbolPrecisionInfo {
+        symbol: "SUI".to_string(),
+        binance_step_size: 0.1,
+        binance_tick_size: 0.001,
+        binance_min_qty: 0.1,
+        binance_min_notional: 5.0,
+        hyperliquid_sz_decimals: 1,
+        hyperliquid_asset_index: 5,
+        hyperliquid_min_notional: 10.0,
+    };
+
+    let trigger = ProfitTriggerEngine::default();
+    let decision = trigger.evaluate_opportunity(&opp, 50.0, true, Some(&prec));
+
+    // Open position
+    let _ = engine
+        .simulate_open(
+            &opp,
+            &decision,
+            &prec,
+            bhyper::types::ExecutionMode::MakerTaker,
+        )
+        .unwrap();
+
+    // Emulate position opened in the previous hour (e.g. 13:59:30 vs 14:00:05)
+    let now = Utc::now();
+    let previous_hour = now - chrono::Duration::hours(1);
+    if let Some(p) = engine.store.state.active_positions.get_mut("SUI") {
+        p.last_hl_funding_time = previous_hour;
+    }
+
+    let funding_events = engine
+        .accrue_funding_payments(std::slice::from_ref(&opp))
+        .unwrap();
+
+    assert_eq!(funding_events.len(), 1);
+    assert_eq!(funding_events[0].symbol, "SUI");
+    assert!(funding_events[0].funding_payment_usd > 0.0);
+
+    let _ = std::fs::remove_dir_all(tmp_dir);
 }

@@ -223,7 +223,25 @@ impl RiskSentinel {
             };
         }
 
-        // 5. 最大持仓时长超时平仓 (Max Duration Decay)
+        // 5. 基差收敛与已收资金费主动止盈 (Basis Take Profit & Profit Harvesting)
+        let accumulated_funding_bps = (pos.accumulated_funding_usd / notional) * 10_000.0;
+        let est_exit_fee_bps = 7.5; // 双边平仓预估手续费 (HL Taker 3.5 bps + BN Taker 4.0 bps)
+        let total_realizable_net_bps = basis_pnl_bps + accumulated_funding_bps - est_exit_fee_bps;
+
+        if pos.accumulated_funding_usd > 0.0
+            && total_realizable_net_bps >= self.config.take_profit_basis_bps
+        {
+            return ExitSignal::BasisTakeProfit {
+                basis_pnl_bps,
+                min_tp_bps: self.config.take_profit_basis_bps,
+                reason: format!(
+                    "基差收敛与已收资金费产生净盈利 {:.2} bps (超目标 {:.1} bps), 主动止盈离场释放槽位",
+                    total_realizable_net_bps, self.config.take_profit_basis_bps
+                ),
+            };
+        }
+
+        // 6. 最大持仓时长超时平仓 (Max Duration Decay)
         if holding_hours >= self.config.max_holding_hours {
             return ExitSignal::MaxDurationExceeded {
                 holding_hours,
@@ -235,32 +253,43 @@ impl RiskSentinel {
             };
         }
 
-        // 6. 利差衰减与逆转判定 (Spread Decay / Inversion)
+        // 7. 利差衰减与逆转判定 (Spread Decay / Inversion with Fee-Amortization Lock)
         if let Some(opp) = current_opp {
             let current_effective_apr = match pos.hyperliquid_side {
                 PositionSide::Short => opp.hyperliquid_apr_pct - opp.binance_apr_pct,
                 PositionSide::Long => opp.binance_apr_pct - opp.hyperliquid_apr_pct,
             };
 
-            if current_effective_apr < 0.0 {
+            if current_effective_apr < -10.0 {
                 return ExitSignal::SpreadInverted {
                     current_apr: current_effective_apr,
                     reason: format!(
-                        "跨所资金费率已反向倒挂至 {:.2}% APR, 立即平仓避免持续付息",
+                        "跨所资金费率已严重反向倒挂至 {:.2}% APR, 立即平仓避免持续付息",
                         current_effective_apr
                     ),
                 };
             }
 
             if current_effective_apr < self.config.min_exit_apr_pct {
-                return ExitSignal::SpreadDecay {
-                    current_apr: current_effective_apr,
-                    min_exit_apr: self.config.min_exit_apr_pct,
-                    reason: format!(
-                        "利差已衰减至 {:.2}% APR (低于平仓退出线 {:.1}%)",
-                        current_effective_apr, self.config.min_exit_apr_pct
-                    ),
-                };
+                // 保本持仓锁 (Fee-Amortization Lock):
+                // 若累计实收资金费尚不足以覆盖退出手续费 (净收益 < 0)，且未严重倒挂、未超最大持仓时长，
+                // 则拒绝因单纯 APR 回落而割肉平仓，继续持有等待整点结算摊薄摩擦！
+                if self.config.fee_amortization_lock
+                    && total_realizable_net_bps < 0.0
+                    && current_effective_apr >= -5.0
+                    && holding_hours < self.config.max_holding_hours
+                {
+                    // 保持持仓，不触发衰减退出
+                } else {
+                    return ExitSignal::SpreadDecay {
+                        current_apr: current_effective_apr,
+                        min_exit_apr: self.config.min_exit_apr_pct,
+                        reason: format!(
+                            "利差已衰减至 {:.2}% APR (低于平仓退出线 {:.1}%), 且已满足平仓保本/超时条件",
+                            current_effective_apr, self.config.min_exit_apr_pct
+                        ),
+                    };
+                }
             }
         }
 

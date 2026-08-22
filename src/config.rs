@@ -73,6 +73,8 @@ pub struct StrategyConfig {
     pub tracked_symbols: Vec<String>,
     #[serde(default = "default_min_apr")]
     pub min_open_apr_pct: f64,
+    #[serde(default = "default_min_apr")]
+    pub min_carry_apr_pct: f64,
     #[serde(default = "default_exit_apr")]
     pub min_exit_apr_pct: f64,
     #[serde(default = "default_max_pos_usd")]
@@ -93,6 +95,10 @@ pub struct StrategyConfig {
     pub max_slippage_bps: f64,
     #[serde(default = "default_true")]
     pub auto_unwind_on_decay: bool,
+    #[serde(default = "default_true")]
+    pub fee_amortization_lock: bool,
+    #[serde(default = "default_true")]
+    pub dual_horizon_mode: bool,
     #[serde(default = "default_min_open_interest")]
     pub min_open_interest_usd: f64,
     #[serde(default = "default_min_volume_24h")]
@@ -130,25 +136,25 @@ fn default_symbols() -> Vec<String> {
 }
 
 fn default_min_apr() -> f64 {
-    30.0
+    25.0
 }
 fn default_exit_apr() -> f64 {
     5.0
 }
 fn default_max_pos_usd() -> f64 {
-    500.0
+    120.0
 }
 fn default_max_active_positions() -> usize {
     3
 }
 fn default_max_holding_hours() -> f64 {
-    8.0
+    12.0
 }
 fn default_stop_loss_basis_bps() -> f64 {
     40.0
 }
 fn default_take_profit_basis_bps() -> f64 {
-    20.0
+    15.0
 }
 fn default_leverage() -> f64 {
     2.0
@@ -177,6 +183,7 @@ impl Default for StrategyConfig {
         Self {
             tracked_symbols: default_symbols(),
             min_open_apr_pct: default_min_apr(),
+            min_carry_apr_pct: default_min_apr(),
             min_exit_apr_pct: default_exit_apr(),
             max_position_usd_per_pair: default_max_pos_usd(),
             max_active_positions: default_max_active_positions(),
@@ -187,6 +194,8 @@ impl Default for StrategyConfig {
             maker_taker_mode: default_true(),
             max_slippage_bps: default_slippage_bps(),
             auto_unwind_on_decay: default_true(),
+            fee_amortization_lock: default_true(),
+            dual_horizon_mode: default_true(),
             min_open_interest_usd: default_min_open_interest(),
             min_24h_volume_usd: default_min_volume_24h(),
             max_bid_ask_spread_bps: default_max_spread_bps(),
@@ -210,10 +219,14 @@ pub struct RiskConfig {
     pub auto_rebalance_delta: bool,
     #[serde(default = "default_stop_loss_basis_bps")]
     pub stop_loss_basis_bps: f64,
+    #[serde(default = "default_take_profit_basis_bps")]
+    pub take_profit_basis_bps: f64,
     #[serde(default = "default_max_holding_hours")]
     pub max_holding_hours: f64,
     #[serde(default = "default_exit_apr")]
     pub min_exit_apr_pct: f64,
+    #[serde(default = "default_true")]
+    pub fee_amortization_lock: bool,
     #[serde(default = "default_max_margin_utilization")]
     pub max_margin_utilization_pct: f64,
     #[serde(default = "default_min_liquidation_distance")]
@@ -223,13 +236,13 @@ pub struct RiskConfig {
 }
 
 fn default_max_delta_pct() -> f64 {
-    5.0
+    3.0
 }
 fn default_min_margin_ratio() -> f64 {
-    20.0
+    25.0
 }
 fn default_max_total_notional() -> f64 {
-    5000.0
+    360.0
 }
 fn default_max_margin_utilization() -> f64 {
     75.0
@@ -249,8 +262,10 @@ impl Default for RiskConfig {
             max_total_notional_usd: default_max_total_notional(),
             auto_rebalance_delta: default_true(),
             stop_loss_basis_bps: default_stop_loss_basis_bps(),
+            take_profit_basis_bps: default_take_profit_basis_bps(),
             max_holding_hours: default_max_holding_hours(),
             min_exit_apr_pct: default_exit_apr(),
+            fee_amortization_lock: default_true(),
             max_margin_utilization_pct: default_max_margin_utilization(),
             min_liquidation_distance_pct: default_min_liquidation_distance(),
             rebalance_threshold_imbalance_pct: default_rebalance_threshold(),

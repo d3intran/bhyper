@@ -211,12 +211,17 @@ impl TwoLegExecutor {
                     decision.hl_side, aligned.hyperliquid_formatted_qty, hl_price
                 );
 
+                let hl_ioc_price = if hl_is_buy {
+                    hl_price * 1.005
+                } else {
+                    hl_price * 0.995
+                };
                 let hl_res = self
                     .hyperliquid
                     .place_order(
                         precision.hyperliquid_asset_index,
                         hl_is_buy,
-                        hl_price,
+                        hl_ioc_price,
                         aligned.qty,
                         false, // reduce_only
                         false, // not post_only
@@ -523,12 +528,17 @@ impl TwoLegExecutor {
                 );
 
                 let unwind_is_buy = !hl_is_buy;
+                let unwind_price = if unwind_is_buy {
+                    hl_price * 1.05
+                } else {
+                    hl_price * 0.95
+                };
                 let _ = self
                     .hyperliquid
                     .place_order(
                         precision.hyperliquid_asset_index,
                         unwind_is_buy,
-                        hl_price,
+                        unwind_price,
                         hl_filled_qty,
                         true, // reduce_only
                         false,
@@ -679,12 +689,24 @@ impl TwoLegExecutor {
             PositionSide::Long => false,
             PositionSide::Short => true,
         };
+        let hl_ioc_close_px = if live_hl_px > 0.0 {
+            if hl_close_is_buy {
+                live_hl_px * 1.05
+            } else {
+                live_hl_px * 0.95
+            }
+        } else if hl_close_is_buy {
+            position.hyperliquid_entry_price * 1.05
+        } else {
+            position.hyperliquid_entry_price * 0.95
+        };
+
         let _ = self
             .hyperliquid
             .place_order(
                 precision.hyperliquid_asset_index,
                 hl_close_is_buy,
-                0.0,
+                hl_ioc_close_px,
                 position.hyperliquid_qty,
                 true, // reduce_only
                 false,

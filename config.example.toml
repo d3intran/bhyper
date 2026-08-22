@@ -21,27 +21,40 @@ tracked_symbols = [
     "BTC", "ETH", "SOL", "SUI", "DOGE", "AVAX", "LINK", 
     "NEAR", "APT", "ARB", "OP", "PEPE", "WIF", "TAO", "RENDER", "ONDO", "SAGA"
 ]
-min_open_apr_pct = 30.0          # Minimum Net Spread APR to trigger trade (e.g. 30%)
+min_open_apr_pct = 25.0          # Minimum Net Spread APR to trigger trade (e.g. 25%)
+min_carry_apr_pct = 25.0         # Minimum APR for 24h+ Carry mode entry
 min_exit_apr_pct = 5.0           # Exit threshold when spread compresses (e.g. 5%)
-max_position_usd_per_pair = 50.0 # Max notional size per pair (optimized for small capital)
-max_active_positions = 3         # Max concurrent active pairs to avoid margin fragmentation
-max_holding_hours = 8.0          # Max holding time (hours) before time-decay exit
+max_position_usd_per_pair = 120.0 # Max notional size per pair (optimized for $500 capital)
+max_active_positions = 3         # Max concurrent active pairs (3 slots)
+max_holding_hours = 12.0         # Max holding time (hours) before time-decay exit
 stop_loss_basis_bps = 40.0       # Max basis divergence loss allowed in bps (0.40%)
-take_profit_basis_bps = 20.0     # Basis convergence take-profit threshold in bps (0.20%)
+take_profit_basis_bps = 15.0     # Basis convergence take-profit threshold in bps (0.15%)
 leverage = 2.0                   # Conservative leverage (2x ~ 3x)
 maker_taker_mode = true          # Post-only Maker on HL + Instant Taker on Binance
 max_slippage_bps = 15.0          # Max acceptable slippage in basis points (0.15%)
 auto_unwind_on_decay = true      # Automatically unwind position when spread compresses/inverts
+fee_amortization_lock = true     # Do not exit on decay unless funding covers exit friction
+dual_horizon_mode = true         # Support both 24h+ carry and hourly sniper modes
+min_open_interest_usd = 300000.0 # Minimum OI
+min_24h_volume_usd = 500000.0    # Minimum 24h Volume
+max_bid_ask_spread_bps = 25.0    # Maximum allowable spread
+max_oracle_mark_divergence_pct = 0.6 # Max Oracle deviation
+use_binance_ws_api = true        # Use Zero-HTTP WebSocket API for sub-ms order execution
 
 [risk]
 # Dynamic Risk Sentinel Configuration
-max_delta_drift_pct = 5.0        # Max allowed delta imbalance before rebalancing (5%)
-min_margin_ratio_pct = 20.0      # Liquidation safety buffer threshold
-max_total_notional_usd = 200.0   # Max total portfolio notional across all active pairs
+max_delta_drift_pct = 3.0        # Max allowed delta imbalance before rebalancing (3%)
+min_margin_ratio_pct = 25.0      # Liquidation safety buffer threshold
+max_total_notional_usd = 360.0   # Max total portfolio notional across all active pairs ($140 buffer)
 auto_rebalance_delta = true      # Automatically balance orphan legs
 stop_loss_basis_bps = 40.0       # Hard basis loss stop-loss in bps
-max_holding_hours = 8.0          # Maximum duration limit (hours)
+take_profit_basis_bps = 15.0     # Take profit in bps
+max_holding_hours = 12.0         # Maximum duration limit (hours)
 min_exit_apr_pct = 5.0           # Minimum spread APR exit line
+fee_amortization_lock = true     # Fee amortization protection
+max_margin_utilization_pct = 75.0 # Margin utilization threshold
+min_liquidation_distance_pct = 20.0 # Liquidation distance threshold
+rebalance_threshold_imbalance_pct = 40.0
 
 [telegram]
 # Optional Telemetry & Remote Alerting

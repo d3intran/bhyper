@@ -88,22 +88,31 @@ impl HyperliquidWsStream {
                             ))
                             .await;
 
-                        // If user address is configured, subscribe to webData2 and userFills
-                        if let Some(ref addr) = wallet_address {
-                            if !addr.is_empty() {
-                                let web_data_sub = json!({
-                                    "method": "subscribe",
-                                    "subscription": {
-                                        "type": "webData2",
-                                        "user": addr
-                                    }
-                                });
-                                let _ = ws_stream
-                                    .send(tokio_tungstenite::tungstenite::Message::Text(
-                                        web_data_sub.to_string(),
-                                    ))
-                                    .await;
+                        // Always subscribe to webData2 to receive full metaAndAssetCtxs and funding rates
+                        let user_addr = wallet_address
+                            .as_deref()
+                            .filter(|a| !a.trim().is_empty())
+                            .unwrap_or("0x0000000000000000000000000000000000000000");
 
+                        let web_data_sub = json!({
+                            "method": "subscribe",
+                            "subscription": {
+                                "type": "webData2",
+                                "user": user_addr
+                            }
+                        });
+                        let _ = ws_stream
+                            .send(tokio_tungstenite::tungstenite::Message::Text(
+                                web_data_sub.to_string(),
+                            ))
+                            .await;
+                        info!("Subscribed to Hyperliquid webData2 (user: {})", user_addr);
+
+                        // If user address is configured, subscribe to userFills
+                        if let Some(ref addr) = wallet_address {
+                            if !addr.is_empty()
+                                && addr != "0x0000000000000000000000000000000000000000"
+                            {
                                 let user_fills_sub = json!({
                                     "method": "subscribe",
                                     "subscription": {
@@ -117,7 +126,7 @@ impl HyperliquidWsStream {
                                     ))
                                     .await;
                                 info!(
-                                    "Subscribed to Hyperliquid webData2 and userFills for {}",
+                                    "Subscribed to Hyperliquid userFills for {}",
                                     addr
                                 );
                             }

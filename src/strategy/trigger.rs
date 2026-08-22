@@ -26,9 +26,11 @@ pub struct ProfitTriggerEngine {
     pub min_net_profit_bps: f64, // 单次必须确保的最小净利润 (例如 3.5 bps = 0.035%)
     pub max_basis_spread_bps: f64, // 允许的最大基差倒挂 (例如 20 bps)
     pub min_notional_usd: f64,   // 单笔最小名义价值 (例如 $12 满足两所限制)
-    pub max_notional_usd: f64,   // 单笔最大名义价值 (例如 $50 用于小资金)
+    pub max_notional_usd: f64,   // 单笔最大名义价值 (例如 $100 用于小资金)
     pub sniper_window_secs: (u32, u32), // 狙击窗口: (最小秒数 10s, 最大秒数 60s)
     pub maker_taker_mode: bool,
+    pub dual_horizon_mode: bool,
+    pub min_carry_apr_pct: f64,
     pub min_open_interest_usd: f64,
     pub min_24h_volume_usd: f64,
     pub max_bid_ask_spread_bps: f64,
@@ -43,9 +45,11 @@ impl Default for ProfitTriggerEngine {
             min_net_profit_bps: 3.5,      // 必须保证单次至少净赚 0.035%
             max_basis_spread_bps: 20.0,   // 基差倒挂不超过 0.20%
             min_notional_usd: 12.0,       // 超过 HL $10 和 BN $5 的硬门槛
-            max_notional_usd: 50.0,       // 针对 $100 初始小本金
+            max_notional_usd: 100.0,      // 适配 $500 初始资金多槽位
             sniper_window_secs: (10, 60), // 整点前 10s ~ 60s 触发
             maker_taker_mode: true,
+            dual_horizon_mode: true,
+            min_carry_apr_pct: 25.0,
             min_open_interest_usd: 300_000.0,
             min_24h_volume_usd: 500_000.0,
             max_bid_ask_spread_bps: 25.0,
@@ -64,6 +68,12 @@ impl ProfitTriggerEngine {
             maker_taker_mode,
             ..Default::default()
         }
+    }
+
+    pub fn with_dual_horizon(mut self, enabled: bool, min_carry_apr_pct: f64) -> Self {
+        self.dual_horizon_mode = enabled;
+        self.min_carry_apr_pct = min_carry_apr_pct;
+        self
     }
 
     pub fn with_liquidity_guards(
@@ -266,9 +276,14 @@ impl ProfitTriggerEngine {
             };
         }
 
-        // 2. 时间窗口锁 (Timing Sniper Lock)
-        let in_window = ignore_window
-            || (secs_left >= self.sniper_window_secs.0 && secs_left <= self.sniper_window_secs.1);
+        // 2. 时间窗口与双模式判定 (Dual-Horizon: Carry Mode vs Sniper Mode)
+        let in_sniper_window =
+            secs_left >= self.sniper_window_secs.0 && secs_left <= self.sniper_window_secs.1;
+        let is_valid_carry_mode = self.dual_horizon_mode
+            && opp.net_spread_apr_pct >= self.min_carry_apr_pct
+            && opp.est_break_even_hours <= 3.0;
+
+        let in_window = ignore_window || in_sniper_window || is_valid_carry_mode;
         if !in_window {
             return TriggerDecision {
                 symbol: opp.symbol.clone(),
@@ -285,13 +300,13 @@ impl ProfitTriggerEngine {
                 is_binance_settlement_next: is_bn_settlement,
                 projected_4h_net_bps: 0.0,
                 reject_reason: Some(format!(
-                    "不在整点狙击窗口内 (剩余 {}s, 需在 {}-{}s 之间)",
-                    secs_left, self.sniper_window_secs.0, self.sniper_window_secs.1
+                    "未在整点狙击窗口内 (剩余 {}s), 且年化利差 {:.1}% 未达长效 Carry 门槛 ({:.1}%)",
+                    secs_left, opp.net_spread_apr_pct, self.min_carry_apr_pct
                 )),
             };
         }
 
-        // 2. 基差安全垫判断 (Basis Cushion Guard)
+        // 3. 基差安全垫判断 (Basis Cushion Guard)
         let entry_basis_bps = opp.price_spread_pct * 100.0;
         if opp.hyperliquid_side == PositionSide::Short
             && entry_basis_bps < -self.max_basis_spread_bps
@@ -317,7 +332,7 @@ impl ProfitTriggerEngine {
             };
         }
 
-        // 3. 计算单期真实的费率现金流 (考虑 1h 与 8h 结算排期差异)
+        // 4. 计算单期真实的费率现金流 (考虑 1h 与 8h 结算排期差异)
         let hl_1h_rate_bps = (opp.hyperliquid_rate_1h_pct / 100.0) * 10_000.0;
         let bn_8h_rate_bps = (opp.binance_rate_8h_pct / 100.0) * 10_000.0;
 
@@ -337,12 +352,12 @@ impl ProfitTriggerEngine {
             hl_1h_cashflow // 币安在非 8h 节点结算不发放/扣除资金费
         };
 
-        // 4. 摩擦成本 (Maker-Taker vs Taker-Taker)
+        // 5. 摩擦成本 (Maker-Taker vs Taker-Taker)
         // Maker-Taker: HL Maker 0.00% + BN Taker 0.04% + 滑点 0.02% + 平仓摩擦 0.06% = 12 bps
         // Taker-Taker: HL Taker 0.035% + BN Taker 0.04% + 滑点 0.04% + 平仓摩擦 0.115% = 23 bps
         let total_friction_cost_bps = if self.maker_taker_mode { 12.0 } else { 23.0 };
 
-        // 5. 预期持仓净利润 (单期 1h 与 4h 预期)
+        // 6. 预期持仓净利润 (单期 1h 与 4h 预期)
         let single_cycle_net_bps = single_cycle_income_bps - total_friction_cost_bps;
         let projected_4h_net_bps = (hl_1h_cashflow * 4.0)
             + (if is_bn_settlement {
@@ -352,8 +367,8 @@ impl ProfitTriggerEngine {
             })
             - total_friction_cost_bps;
 
-        // 触发条件: 回本时间 <= 2.5h 且 (4h 预期净利 >= min_net_profit_bps 或 1h 立即净赚)
-        let is_profitable = (opp.est_break_even_hours <= 2.5
+        // 触发条件: 回本时间 <= 3.0h 且 (4h 预期净利 >= min_net_profit_bps 或 1h 立即净赚)
+        let is_profitable = (opp.est_break_even_hours <= 3.0
             && projected_4h_net_bps >= self.min_net_profit_bps)
             || single_cycle_net_bps >= self.min_net_profit_bps;
 
@@ -373,7 +388,7 @@ impl ProfitTriggerEngine {
                 is_binance_settlement_next: is_bn_settlement,
                 projected_4h_net_bps,
                 reject_reason: Some(format!(
-                    "回本耗时 {:.1}h > 2.5h 或 4h净利 {:.2} bps 低于门槛 {:.2} bps",
+                    "回本耗时 {:.1}h > 3.0h 或 4h净利 {:.2} bps 低于门槛 {:.2} bps",
                     opp.est_break_even_hours, projected_4h_net_bps, self.min_net_profit_bps
                 )),
             };
