@@ -320,6 +320,10 @@ pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoRespo
         wallet.hyperliquid.unrealized_pnl_usd = total_hl_unrealized;
     }
 
+    // Deterministically sort positions to prevent UI flickering/jumping
+    live_positions.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+    paper_positions.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+
     Json(PositionsResponse {
         live_positions,
         paper_positions,

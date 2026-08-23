@@ -98,12 +98,32 @@ async fn test_web_embedded_static_index_html() {
         .body(Body::empty())
         .unwrap();
 
-    let res = app.oneshot(req).await.unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body_bytes = res.into_body().collect().await.unwrap().to_bytes();
     let body_str = String::from_utf8_lossy(&body_bytes);
     assert!(body_str.contains("BHyper"));
     assert!(body_str.contains("Telegram"));
+
+    // Test CSS route
+    let req_css = Request::builder()
+        .uri("/css/theme.css")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let res_css = app.clone().oneshot(req_css).await.unwrap();
+    assert_eq!(res_css.status(), StatusCode::OK);
+    assert_eq!(res_css.headers().get("content-type").unwrap(), "text/css; charset=utf-8");
+
+    // Test JS route
+    let req_js = Request::builder()
+        .uri("/js/app.js")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let res_js = app.oneshot(req_js).await.unwrap();
+    assert_eq!(res_js.status(), StatusCode::OK);
+    assert_eq!(res_js.headers().get("content-type").unwrap(), "application/javascript; charset=utf-8");
 }
 
 #[tokio::test]

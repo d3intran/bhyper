@@ -148,6 +148,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         wallet.hyperliquid.unrealized_pnl_usd = total_hl_unrealized;
                     }
 
+                    // Deterministically sort positions to prevent UI bouncing
+                    live_pos.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+                    paper_pos.sort_by(|a, b| a.symbol.cmp(&b.symbol));
+
                     let packet = json!({
                         "type": "TICK",
                         "timestamp": Utc::now(),
