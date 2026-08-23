@@ -26,5 +26,5 @@ async fn main() -> Result<()> {
     let state_store = Arc::new(Mutex::new(StateStore::load_or_create(None)?));
 
     let command = cli.command.unwrap_or(Commands::Scan { limit: 20 });
-    run_cli(command, &config, state_store).await
+    run_cli(command, &config, config_path, state_store).await
 }

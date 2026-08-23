@@ -61,3 +61,13 @@ rebalance_threshold_imbalance_pct = 40.0
 bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
 chat_id = 123456789
 alerts_enabled = true
+
+[web]
+# Embedded High-Performance Web Dashboard & Telegram Mini App Engine (Axum)
+host = "127.0.0.1"                   # Bind to localhost for Cloudflare Tunnel secure ingress
+port = 8080                          # Web server port (e.g. 8080)
+# auth_token = "your_secret_web_token" # Optional static API key / Bearer Token
+enable_tg_auth = true                # Enable Telegram Mini App HMAC-SHA256 auto verification
+enable_cf_auth = true                # Enable Cloudflare Zero Trust (Access) header verification
+cf_allowed_emails = []               # Optional whitelist of allowed Cloudflare Access emails (e.g. ["trader@gmail.com"])
+

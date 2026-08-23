@@ -12,6 +12,7 @@ pub mod stream;
 pub mod trade;
 pub mod trigger;
 pub mod unwind;
+pub mod web;
 
 use crate::config::Config;
 use crate::state::StateStore;
@@ -134,6 +135,13 @@ pub enum Commands {
         #[arg(short, long)]
         symbol: String,
     },
+    /// 启动高性能嵌入式 Web 控制台与 Telegram Mini App 服务 (Axum + WebSocket + Cloudflare Ready)
+    Web {
+        #[arg(long)]
+        host: Option<String>,
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
     /// 显示当前配置与配置文件位置
     Config,
 }
@@ -141,6 +149,7 @@ pub enum Commands {
 pub async fn run_cli(
     command: Commands,
     config: &Config,
+    config_path: std::path::PathBuf,
     state_store: Arc<Mutex<StateStore>>,
 ) -> Result<()> {
     match command {
@@ -211,6 +220,9 @@ pub async fn run_cli(
             action,
         } => paper::run_trade(config, &symbol, margin_usd, &action).await,
         Commands::Unwind { symbol } => unwind::run(config, state_store, &symbol).await,
+        Commands::Web { host, port } => {
+            web::run(config.clone(), config_path, state_store, host, port).await
+        }
         Commands::Config => {
             let path = Config::default_config_path();
             println!("⚙️ Configuration file: {}", path.display());

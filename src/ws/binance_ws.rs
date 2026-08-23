@@ -9,16 +9,16 @@ use tracing::{error, info, warn};
 
 #[derive(Deserialize, Debug)]
 struct BinanceWsMarkPriceItem<'a> {
-    #[serde(rename = "s", borrow)]
-    symbol: &'a str,
-    #[serde(rename = "p", borrow)]
-    mark_price: &'a str,
-    #[serde(rename = "i", borrow)]
-    index_price: &'a str,
-    #[serde(rename = "r", borrow)]
-    funding_rate: &'a str,
-    #[serde(rename = "T")]
-    next_funding_time: i64,
+    #[serde(rename = "s", default, borrow)]
+    symbol: Option<&'a str>,
+    #[serde(rename = "p", default, borrow)]
+    mark_price: Option<&'a str>,
+    #[serde(rename = "i", default, borrow)]
+    index_price: Option<&'a str>,
+    #[serde(rename = "r", default, borrow)]
+    funding_rate: Option<&'a str>,
+    #[serde(rename = "T", default)]
+    next_funding_time: Option<i64>,
 }
 
 pub struct BinanceWsStream;
@@ -43,21 +43,31 @@ impl BinanceWsStream {
                                     {
                                         let mut rates = Vec::with_capacity(items.len());
                                         for item in items {
-                                            if !item.symbol.ends_with("USDT") {
-                                                continue;
-                                            }
-                                            let base_coin =
-                                                item.symbol.trim_end_matches("USDT").to_string();
-                                            let mark_p =
-                                                item.mark_price.parse::<f64>().unwrap_or(0.0);
-                                            let index_p =
-                                                item.index_price.parse::<f64>().unwrap_or(0.0);
-                                            let rate_8h =
-                                                item.funding_rate.parse::<f64>().unwrap_or(0.0);
+                                            let full_sym = match item.symbol {
+                                                Some(s) => s,
+                                                None => continue,
+                                            };
+                                            let base_coin = match full_sym.strip_suffix("USDT") {
+                                                Some(b) => b.to_ascii_uppercase(),
+                                                None => continue,
+                                            };
+
+                                            let mark_p = item
+                                                .mark_price
+                                                .and_then(|p| p.parse::<f64>().ok())
+                                                .unwrap_or(0.0);
+                                            let index_p = item
+                                                .index_price
+                                                .and_then(|p| p.parse::<f64>().ok())
+                                                .unwrap_or(mark_p);
+                                            let rate_8h = item
+                                                .funding_rate
+                                                .and_then(|r| r.parse::<f64>().ok())
+                                                .unwrap_or(0.0);
                                             let apr = rate_8h * 1095.0 * 100.0;
-                                            let next_t = Utc
-                                                .timestamp_millis_opt(item.next_funding_time)
-                                                .single();
+                                            let next_t = item
+                                                .next_funding_time
+                                                .and_then(|t| Utc.timestamp_millis_opt(t).single());
 
                                             rates.push(FundingRateInfo {
                                                 symbol: base_coin,

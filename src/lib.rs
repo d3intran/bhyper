@@ -13,6 +13,7 @@ pub mod state;
 pub mod strategy;
 pub mod telemetry;
 pub mod types;
+pub mod web;
 pub mod ws;
 
 pub use binance::BinanceFuturesClient;

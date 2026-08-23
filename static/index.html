@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BHyper Terminal | Institutional Arbitrage & Carry Matrix</title>
+  
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- Google Fonts: Inter, JetBrains Mono, Noto Sans SC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Inter"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              900: '#064e3b'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg-main: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-card-secondary: #f1f5f9;
+      --border-color: #e2e8f0;
+      --border-subtle: #edf2f7;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --header-bg: rgba(255, 255, 255, 0.88);
+      --table-hover: #f8fafc;
+      --badge-bg: #f1f5f9;
+    }
+    
+    html.dark {
+      --bg-main: #0b0f17;
+      --bg-card: #111827;
+      --bg-card-secondary: #172033;
+      --border-color: #1e293b;
+      --border-subtle: #1a2333;
+      --text-main: #f8fafc;
+      --text-muted: #8e9db2;
+      --header-bg: rgba(11, 15, 23, 0.90);
+      --table-hover: rgba(23, 32, 51, 0.6);
+      --badge-bg: #1e293b;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+      transition: background-color 0.2s ease, color 0.2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .font-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-feature-settings: "tnum";
+      font-variant-numeric: tabular-nums;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 3px;
+    }
+
+    .pulse-dot {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+      animation: pulsing 2s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulsing {
+      to {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+      }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col custom-scrollbar text-[13px] leading-normal select-none">
+
+  <!-- ========================================================================= -->
+  <!-- 1. 顶部专业级控制条 (Header)                                              -->
+  <!-- ========================================================================= -->
+  <header class="sticky top-0 z-40 backdrop-blur-md border-b border-[var(--border-color)] bg-[var(--header-bg)] px-4 py-2.5 transition-colors">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      
+      <!-- Brand & Status Pill -->
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-[14px] tracking-tight text-[var(--text-main)]">BHyper</span>
+            <span class="text-xs font-semibold text-[var(--text-muted)] tracking-tight">Terminal</span>
+            <span id="badge-version" class="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-num font-medium border border-[var(--border-color)]">v0.1.0</span>
+          </div>
+          <div class="flex items-center space-x-2 text-[11px] text-[var(--text-muted)] mt-0.5">
+            <span id="status-indicator" class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block"></span>
+            <span id="status-text" class="font-semibold text-emerald-600 dark:text-emerald-400 text-[10px]">WS LIVE</span>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <span id="tg-user-badge" class="font-medium text-[11px]">Terminal</span>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <span class="font-num text-[11px]"><span id="header-cache-count" class="font-semibold text-emerald-500">206</span> Pairs</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desktop Nav Tabs -->
+      <nav class="hidden md:flex items-center space-x-1 bg-slate-200/60 dark:bg-slate-900/60 p-1 rounded-xl border border-[var(--border-color)]">
+        <button onclick="switchTab('dashboard')" id="nav-btn-dashboard" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+          <span>总览</span>
+        </button>
+        <button onclick="switchTab('radar')" id="nav-btn-radar" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+          <span>机会雷达</span>
+          <span id="radar-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300">206</span>
+        </button>
+        <button onclick="switchTab('positions')" id="nav-btn-positions" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+          <span>活跃持仓</span>
+          <span id="pos-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">0</span>
+        </button>
+        <button onclick="switchTab('config')" id="nav-btn-config" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
+          <span>策略调优</span>
+        </button>
+        <button onclick="switchTab('journal')" id="nav-btn-journal" class="tab-btn px-3 py-1.5 rounded-lg font-semibold text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)]">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+          <span>全息流水</span>
+        </button>
+      </nav>
+
+      <!-- Right Controls: Theme Toggle & Clock -->
+      <div class="flex items-center space-x-2">
+        <button onclick="toggleTheme()" id="theme-toggle-btn" title="切换主题" class="w-8 h-8 rounded-lg bg-[var(--bg-card-secondary)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-main)] border border-[var(--border-color)] flex items-center justify-center transition active:scale-95">
+          <i data-lucide="moon" id="theme-icon" class="w-4 h-4 text-slate-400"></i>
+        </button>
+
+        <button onclick="fetchInitialData()" title="刷新数据" class="w-8 h-8 rounded-lg bg-[var(--bg-card-secondary)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-main)] border border-[var(--border-color)] flex items-center justify-center transition active:scale-95">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-400"></i>
+        </button>
+
+        <div class="text-right text-[11px] hidden sm:block border-l border-[var(--border-color)] pl-3">
+          <div id="clock-utc" class="font-num font-medium text-[var(--text-main)]">--:--:-- UTC+8</div>
+          <div id="funding-countdown" class="font-num text-cyan-600 dark:text-cyan-400 text-[10px]">Settlement in --m</div>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- 2. 主体容器                                                              -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 space-y-4 pb-24 md:pb-8">
+
+    <!-- KPI Metrics Ribbon (4 Cards) -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      
+      <!-- Card 1: Total Equity -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-slate-700">
+        <div class="text-[var(--text-muted)] text-xs flex justify-between items-center font-medium">
+          <span>跨所净总权益 (Equity)</span>
+          <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+            <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
+          </div>
+        </div>
+        <div id="stat-total-equity" class="text-xl sm:text-2xl font-num font-bold text-[var(--text-main)] mt-1.5 tracking-tight">$500.00</div>
+        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-color)] pt-2">
+          <span>BN: <b id="stat-bn-equity" class="text-[var(--text-main)] font-semibold">$250.00</b></span>
+          <span>HL: <b id="stat-hl-equity" class="text-[var(--text-main)] font-semibold">$250.00</b></span>
+        </div>
+      </div>
+
+      <!-- Card 2: Realized & Net PnL -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-slate-700">
+        <div class="text-[var(--text-muted)] text-xs flex justify-between items-center font-medium">
+          <span>已实现盈亏 (Realized PnL)</span>
+          <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+            <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+          </div>
+        </div>
+        <div id="stat-realized-pnl" class="text-xl sm:text-2xl font-num font-bold text-emerald-500 mt-1.5 tracking-tight">+$0.0000</div>
+        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-color)] pt-2">
+          <span>胜率: <b id="stat-win-rate" class="text-emerald-500 font-bold">100.0%</b></span>
+          <span>共 <b id="stat-trade-count" class="text-[var(--text-main)]">0</b> 笔平仓</span>
+        </div>
+      </div>
+
+      <!-- Card 3: Net Funding Harvest (Deducting Fees) -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-slate-700">
+        <div class="text-[var(--text-muted)] text-xs flex justify-between items-center font-medium">
+          <span>累计净资金费收入 (Net Carry)</span>
+          <div class="w-6 h-6 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-500">
+            <i data-lucide="coins" class="w-3.5 h-3.5"></i>
+          </div>
+        </div>
+        <div id="stat-funding-income" class="text-xl sm:text-2xl font-num font-bold text-cyan-500 mt-1.5 tracking-tight">+$0.0000</div>
+        <div class="text-[10px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-color)] pt-2">
+          <span>资金费 <span id="stat-gross-funding" class="text-cyan-500 font-medium">+$0.00</span> · 手续费 <span id="stat-total-fees" class="text-rose-500 font-medium">-$0.00</span></span>
+          <span id="stat-hourly-runrate" class="text-cyan-600 dark:text-cyan-400 font-medium">~$0.00/h</span>
+        </div>
+      </div>
+
+      <!-- Card 4: Active Positions & Margin Health -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-slate-700">
+        <div class="text-[var(--text-muted)] text-xs flex justify-between items-center font-medium">
+          <span>活跃套利对 / 保证金率</span>
+          <div class="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+          </div>
+        </div>
+        <div class="flex items-baseline space-x-2 mt-1.5">
+          <span id="stat-active-pairs" class="text-xl sm:text-2xl font-num font-bold text-amber-500 tracking-tight">0 对</span>
+          <span id="stat-margin-util" class="text-xs font-num text-[var(--text-muted)] font-semibold">(已用 0.0%)</span>
+        </div>
+        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-color)] pt-2">
+          <span>强平缓冲: <b class="text-emerald-500">>50%</b></span>
+          <span id="stat-health-badge" class="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/20">HEALTHY</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 1: 总览 (DASHBOARD)                                                   -->
+    <!-- ========================================================================= -->
+    <section id="tab-dashboard" class="tab-pane space-y-4">
+      
+      <!-- 双所保证金仪表盘 -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <span class="font-semibold text-xs text-[var(--text-main)] flex items-center space-x-1.5">
+              <i data-lucide="shield" class="w-4 h-4 text-emerald-500"></i>
+              <span>跨所保证金健康与再平衡状态 (Cross-Exchange Margin Health)</span>
+            </span>
+          </div>
+          <span id="rebalance-status-badge" class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">资金完全平衡</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <!-- Binance Box -->
+          <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-2">
+            <div class="flex justify-between text-xs font-medium">
+              <span class="font-semibold text-amber-500 flex items-center space-x-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <span>Binance Futures (USDT-M)</span>
+              </span>
+              <span id="bn-health-util" class="font-num text-[var(--text-main)] font-medium">已用 $0.00 (0.0%)</span>
+            </div>
+            <div class="w-full bg-slate-300 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="bn-util-bar" class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
+              <span>可用保证金: <b id="bn-free-margin" class="text-[var(--text-main)] font-semibold">$250.00</b></span>
+              <span>强平距离: <b id="bn-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
+            </div>
+          </div>
+
+          <!-- Hyperliquid Box -->
+          <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-2">
+            <div class="flex justify-between text-xs font-medium">
+              <span class="font-semibold text-cyan-500 flex items-center space-x-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                <span>Hyperliquid L1 (USDC)</span>
+              </span>
+              <span id="hl-health-util" class="font-num text-[var(--text-main)] font-medium">已用 $0.00 (0.0%)</span>
+            </div>
+            <div class="w-full bg-slate-300 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="hl-util-bar" class="bg-cyan-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
+              <span>可用保证金: <b id="hl-free-margin" class="text-[var(--text-main)] font-semibold">$250.00</b></span>
+              <span>强平距离: <b id="hl-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="rebalance-advisory-box" class="mt-2.5 text-xs bg-[var(--bg-card-secondary)] p-2 rounded-lg border border-[var(--border-color)] flex items-center justify-between text-[var(--text-muted)]">
+          <span id="rebalance-advisory-text" class="flex items-center space-x-1.5">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span>两所资金配比健康，无需执行划转。</span>
+          </span>
+          <span class="text-[11px] font-num text-[var(--text-muted)]">再平衡阈值: 40.0%</span>
+        </div>
+      </div>
+
+      <!-- 实时持仓简表 (Overview) -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-xs text-[var(--text-main)] flex items-center space-x-2">
+            <i data-lucide="layers" class="w-4 h-4 text-emerald-500"></i>
+            <span>当前在跑套利头寸 (Active Positions)</span>
+          </h3>
+          <button onclick="switchTab('positions')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
+            <span>管理详情</span>
+            <i data-lucide="chevron-right" class="w-3 h-3"></i>
+          </button>
+        </div>
+        <div id="dashboard-positions-deck" class="space-y-2">
+          <!-- 动态注入持仓条目 -->
+        </div>
+      </div>
+
+      <!-- Top 5 机会快速榜 (Top Spreads) -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-xs text-[var(--text-main)] flex items-center space-x-2">
+            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500"></i>
+            <span>Top 5 顶级利差机会 (Top Spread Opportunities)</span>
+          </h3>
+          <button onclick="switchTab('radar')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
+            <span>查看全部 206 标的</span>
+            <i data-lucide="chevron-right" class="w-3 h-3"></i>
+          </button>
+        </div>
+        <div id="dashboard-top-radar-table" class="overflow-x-auto custom-scrollbar">
+          <!-- 动态注入 Top 5 表格 -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: 机会雷达 (RADAR - 全币种 206 交易对实时全景)                       -->
+    <!-- ========================================================================= -->
+    <section id="tab-radar" class="tab-pane hidden space-y-4">
+      
+      <!-- 控制与过滤器栏 -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-3 shadow-sm space-y-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          
+          <!-- Search Bar -->
+          <div class="relative flex-1 max-w-md">
+            <i data-lucide="search" class="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="radar-search" oninput="filterRadarTable()" placeholder="搜索标的 (如 BTC, SOL, SUI, DOGE, VINE)..." class="w-full bg-[var(--bg-card-secondary)] border border-[var(--border-color)] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:border-emerald-500 transition">
+          </div>
+
+          <!-- Quick Filters -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button onclick="setRadarFilter('all')" id="rf-btn-all" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition">全部 (<span id="count-all">0</span>)</button>
+            <button onclick="setRadarFilter('high_apr')" id="rf-btn-high_apr" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-card-secondary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition">>50% APR</button>
+            <button onclick="setRadarFilter('pos_cashflow')" id="rf-btn-pos_cashflow" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-card-secondary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition">1h净现金流>0</button>
+            <button onclick="setRadarFilter('liquid')" id="rf-btn-liquid" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-card-secondary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition">高流动性 (OI>$1M)</button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Real-Time Radar Matrix Table -->
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-[var(--border-color)] bg-[var(--bg-card-secondary)] text-[var(--text-muted)] text-[11px] font-semibold">
+                <th class="py-2.5 px-3.5">交易对</th>
+                <th class="py-2.5 px-3">Binance (8h)</th>
+                <th class="py-2.5 px-3">Hyperliquid (1h)</th>
+                <th class="py-2.5 px-3 text-right">年化净利差 (APR)</th>
+                <th class="py-2.5 px-3 text-center">对冲方向 (Hedge)</th>
+                <th class="py-2.5 px-2 text-right">回本周期</th>
+                <th class="py-2.5 px-2 text-right">预计1h净利</th>
+                <th class="py-2.5 px-2 text-right">24h 成交额</th>
+                <th class="py-2.5 px-2 text-center">评级</th>
+                <th class="py-2.5 px-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="radar-table-body" class="divide-y divide-[var(--border-color)] font-num">
+              <tr>
+                <td colspan="10" class="text-center py-12 text-[var(--text-muted)]">
+                  <div class="flex flex-col items-center justify-center space-y-2">
+                    <i data-lucide="loader" class="w-5 h-5 text-emerald-500 animate-spin"></i>
+                    <span class="text-xs">正在连接实时行情流，计算全币种利差矩阵...</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: 活跃持仓 (POSITIONS)                                               -->
+    <!-- ========================================================================= -->
+    <section id="tab-positions" class="tab-pane hidden space-y-4">
+      
+      <!-- Top Actions -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-sm text-[var(--text-main)]">实时对冲持仓追踪</h2>
+          <p class="text-xs text-[var(--text-muted)]">监控双腿对冲状态、实时未实现盈亏、累计资金费及持仓时长</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="openModal('modal-unwind-all')" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-semibold text-xs border border-rose-500/20 transition flex items-center space-x-1.5">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+            <span>紧急全平 (Close All)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Positions Cards Container -->
+      <div id="positions-container" class="space-y-3">
+        <!-- 动态注入持仓卡片 -->
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: 策略调优工作台 (CONFIG)                                            -->
+    <!-- ========================================================================= -->
+    <section id="tab-config" class="tab-pane hidden space-y-4">
+      
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+        
+        <div class="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+          <div>
+            <h2 class="font-bold text-sm text-[var(--text-main)] flex items-center space-x-2">
+              <i data-lucide="sliders" class="w-4 h-4 text-emerald-500"></i>
+              <span>运行态参数在线热调优 (Live Strategy Studio)</span>
+            </h2>
+            <p class="text-xs text-[var(--text-muted)] mt-0.5">修改后点击保存立即原子刷盘并在内存中即刻生效，无需重启进程</p>
+          </div>
+          <button onclick="saveConfigToServer()" class="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-xs shadow-sm transition flex items-center space-x-1.5 active:scale-95">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>保存并热生效</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+          
+          <!-- 1. 触发阈值 -->
+          <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-2.5">
+            <div class="font-semibold text-[var(--text-main)] flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span>核心套利开仓与平仓线</span>
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">最小开仓净利差 APR (%)</label>
+              <input type="number" id="cfg-min-open-apr" step="0.5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">24h+ Carry 模式入场 APR (%)</label>
+              <input type="number" id="cfg-min-carry-apr" step="0.5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">利差衰减离场线 Exit APR (%)</label>
+              <input type="number" id="cfg-min-exit-apr" step="0.5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <!-- 2. 仓位与资金管理 -->
+          <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-2.5">
+            <div class="font-semibold text-[var(--text-main)] flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+              <span>资金分配与杠杆控制</span>
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">单笔标的最大名义价值 (USD)</label>
+              <input type="number" id="cfg-max-pos-usd" step="10" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">最大同时持仓对数 (Slots)</label>
+              <input type="number" id="cfg-max-active-pos" min="1" max="10" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">交易杠杆倍数 (Leverage)</label>
+              <input type="number" id="cfg-leverage" min="1" max="10" step="0.5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <!-- 3. 风控止盈止损 -->
+          <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-2.5">
+            <div class="font-semibold text-[var(--text-main)] flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+              <span>确定性风控哨兵 (Sentinels)</span>
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">硬性基差止损线 (Basis Loss bps)</label>
+              <input type="number" id="cfg-stop-loss-bps" step="5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">基差收敛止盈线 (Take Profit bps)</label>
+              <input type="number" id="cfg-take-profit-bps" step="5" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-[var(--text-muted)] mb-1">最长持仓超时 (Hours)</label>
+              <input type="number" id="cfg-max-holding-hours" step="1" class="w-full bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 5: 全息流水 (JOURNAL)                                                 -->
+    <!-- ========================================================================= -->
+    <section id="tab-journal" class="tab-pane hidden space-y-4">
+      
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-sm text-[var(--text-main)]">全息不可篡改交易流水账本</h2>
+          <p class="text-xs text-[var(--text-muted)]">真实记录开仓意图、两腿成交细节、每小时资金费入账及平仓复盘</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <select id="journal-filter-type" onchange="fetchJournalEntries()" class="bg-[var(--bg-card-secondary)] border border-[var(--border-color)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-main)] focus:outline-none">
+            <option value="">全部事件 (All Events)</option>
+            <option value="Funding">资金费入账 (Funding)</option>
+            <option value="OpenFill">开仓对冲成交 (Open)</option>
+            <option value="CloseFill">平仓离场结算 (Close)</option>
+            <option value="RiskAlert">风控拦截 (Risk Alert)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-[var(--border-color)] bg-[var(--bg-card-secondary)] text-[var(--text-muted)] text-[11px] font-semibold">
+                <th class="py-2.5 px-3.5">时间</th>
+                <th class="py-2.5 px-2">类型</th>
+                <th class="py-2.5 px-2">标的</th>
+                <th class="py-2.5 px-3">成交与对冲明细</th>
+                <th class="py-2.5 px-2 text-right">名义价值</th>
+                <th class="py-2.5 px-2 text-right">净收支 (PnL / Carry)</th>
+                <th class="py-2.5 px-3 text-right">手续费</th>
+              </tr>
+            </thead>
+            <tbody id="journal-table-body" class="divide-y divide-[var(--border-color)] font-num">
+              <tr>
+                <td colspan="7" class="text-center py-10 text-[var(--text-muted)]">暂无流水记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 3. 手机端固定底部导航 (Mobile Nav)                                        -->
+  <!-- ========================================================================= -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--header-bg)] backdrop-blur-md border-t border-[var(--border-color)] px-2 py-1.5 flex justify-around items-center">
+    <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" class="flex flex-col items-center text-emerald-500 text-[10px] font-medium p-1">
+      <i data-lucide="layout-dashboard" class="w-4 h-4 mb-0.5"></i>
+      <span>总览</span>
+    </button>
+    <button onclick="switchTab('radar')" id="mob-btn-radar" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+      <i data-lucide="radar" class="w-4 h-4 mb-0.5"></i>
+      <span>雷达</span>
+    </button>
+    <button onclick="switchTab('positions')" id="mob-btn-positions" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1 relative">
+      <i data-lucide="layers" class="w-4 h-4 mb-0.5"></i>
+      <span>持仓</span>
+      <span id="mob-pos-badge" class="absolute top-0 right-1 w-2 h-2 rounded-full bg-amber-500 hidden"></span>
+    </button>
+    <button onclick="switchTab('config')" id="mob-btn-config" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+      <i data-lucide="sliders" class="w-4 h-4 mb-0.5"></i>
+      <span>调优</span>
+    </button>
+    <button onclick="switchTab('journal')" id="mob-btn-journal" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+      <i data-lucide="file-text" class="w-4 h-4 mb-0.5"></i>
+      <span>流水</span>
+    </button>
+  </nav>
+
+  <!-- ========================================================================= -->
+  <!-- 4. 模态弹窗 (Modals)                                                      -->
+  <!-- ========================================================================= -->
+  
+  <!-- 紧急全平确认弹窗 -->
+  <div id="modal-unwind-all" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-[var(--bg-card)] border border-rose-500/30 rounded-xl max-w-sm w-full p-5 space-y-3 shadow-xl">
+      <div class="flex items-center space-x-2 text-rose-500 font-bold text-sm">
+        <i data-lucide="alert-octagon" class="w-4 h-4"></i>
+        <span>紧急平仓确认 (Emergency Unwind)</span>
+      </div>
+      <p class="text-xs text-[var(--text-muted)] leading-relaxed">确定要在两边交易所立即市价平掉所有活跃持仓吗？此操作将立即锁定基差盈亏并结束套利周期。</p>
+      <div class="grid grid-cols-2 gap-2.5 pt-2">
+        <button onclick="closeModal('modal-unwind-all')" class="py-2 rounded-lg bg-[var(--bg-card-secondary)] text-[var(--text-main)] font-medium text-xs">取消</button>
+        <button onclick="executeUnwind('ALL')" class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-sm">确认全部平仓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 单标的模拟下单弹窗 -->
+  <div id="modal-paper-trade" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl max-w-sm w-full p-5 space-y-3 shadow-xl">
+      <div class="flex items-center space-x-2 text-emerald-500 font-bold text-sm">
+        <i data-lucide="play-circle" class="w-4 h-4"></i>
+        <span>发起模拟开仓测试 (Simulate Open)</span>
+      </div>
+      <div class="space-y-2.5 text-xs">
+        <div>
+          <label class="block text-[var(--text-muted)] mb-1">交易对</label>
+          <input type="text" id="modal-pt-symbol" readonly class="w-full bg-[var(--bg-card-secondary)] border border-[var(--border-color)] rounded-lg p-2 font-semibold font-num text-[var(--text-main)]">
+        </div>
+        <div>
+          <label class="block text-[var(--text-muted)] mb-1">测试保证金规模 (USD)</label>
+          <input type="number" id="modal-pt-margin" value="50" min="10" step="10" class="w-full bg-[var(--bg-card-secondary)] border border-[var(--border-color)] rounded-lg p-2 font-num font-semibold text-[var(--text-main)] focus:outline-none focus:border-emerald-500">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2.5 pt-2">
+        <button onclick="closeModal('modal-paper-trade')" class="py-2 rounded-lg bg-[var(--bg-card-secondary)] text-[var(--text-main)] font-medium text-xs">取消</button>
+        <button onclick="executePaperTrade('open')" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-sm">立即开仓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- ========================================================================= -->
+  <!-- 5. 核心 JavaScript 交互逻辑                                               -->
+  <!-- ========================================================================= -->
+  <script>
+    const appState = {
+      ws: null,
+      currentTab: 'dashboard',
+      radarFilter: 'all',
+      opportunities: [],
+      livePositions: [],
+      paperPositions: [],
+      paperWallet: null,
+      config: null,
+      tgWebApp: window.Telegram?.WebApp || null,
+    };
+
+    function formatPrice(p) {
+      if (p === undefined || p === null || isNaN(p)) return '$0.00';
+      if (p >= 1000) return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (p >= 1) return `$${p.toFixed(3)}`;
+      if (p >= 0.01) return `$${p.toFixed(4)}`;
+      return `$${p.toFixed(6)}`;
+    }
+
+    if (appState.tgWebApp) {
+      try {
+        appState.tgWebApp.ready();
+        appState.tgWebApp.expand();
+        if (appState.tgWebApp.initDataUnsafe?.user) {
+          const u = appState.tgWebApp.initDataUnsafe.user;
+          document.getElementById('tg-user-badge').innerText = `@${u.username || u.first_name}`;
+        }
+      } catch (e) {
+        console.warn('Telegram init error:', e);
+      }
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light') {
+        document.documentElement.classList.remove('dark');
+        updateThemeIcon(false);
+      } else {
+        document.documentElement.classList.add('dark');
+        updateThemeIcon(true);
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      updateThemeIcon(isDark);
+      lucide.createIcons();
+    }
+
+    function updateThemeIcon(isDark) {
+      const btn = document.getElementById('theme-toggle-btn');
+      if (btn) {
+        btn.innerHTML = isDark ? `<i data-lucide="sun" class="w-4 h-4 text-slate-400"></i>` : `<i data-lucide="moon" class="w-4 h-4 text-slate-400"></i>`;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      lucide.createIcons();
+      initWebSocket();
+      fetchInitialData();
+      startClock();
+    });
+
+    function switchTab(tabId) {
+      if (appState.tgWebApp?.HapticFeedback) appState.tgWebApp.HapticFeedback.impactOccurred('light');
+      appState.currentTab = tabId;
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+      const target = document.getElementById(`tab-${tabId}`);
+      if (target) target.classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)]';
+      });
+      const activeNav = document.getElementById(`nav-btn-${tabId}`);
+      if (activeNav) {
+        activeNav.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm';
+      }
+
+      ['dashboard', 'radar', 'positions', 'config', 'journal'].forEach(t => {
+        const mobBtn = document.getElementById(`mob-btn-${t}`);
+        if (mobBtn) {
+          mobBtn.className = t === tabId ? 'flex flex-col items-center text-emerald-500 text-[10px] font-medium p-1' : 'flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1';
+        }
+      });
+
+      if (tabId === 'journal') fetchJournalEntries();
+      if (tabId === 'config') fetchConfig();
+      lucide.createIcons();
+    }
+
+    function initWebSocket() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = new URLSearchParams(location.search).get('token');
+      const wsUrl = `${protocol}//${location.host}/api/ws${token ? '?token=' + encodeURIComponent(token) : ''}`;
+
+      try {
+        appState.ws = new WebSocket(wsUrl);
+
+        appState.ws.onopen = () => {
+          document.getElementById('status-indicator').className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block';
+          document.getElementById('status-text').className = 'font-semibold text-emerald-600 dark:text-emerald-400 text-[10px]';
+          document.getElementById('status-text').innerText = 'WS LIVE';
+        };
+
+        appState.ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            handleWsTick(data);
+          } catch (err) {
+            console.error('WS parse error:', err);
+          }
+        };
+
+        appState.ws.onclose = () => {
+          document.getElementById('status-indicator').className = 'w-1.5 h-1.5 rounded-full bg-rose-500 inline-block';
+          document.getElementById('status-text').className = 'font-semibold text-rose-500 text-[10px]';
+          document.getElementById('status-text').innerText = 'WS RECONNECT';
+          setTimeout(initWebSocket, 2500);
+        };
+      } catch (e) {
+        console.error('WS setup error:', e);
+      }
+    }
+
+    function handleWsTick(msg) {
+      if (msg.type === 'TICK' || msg.type === 'INIT') {
+        if (msg.opportunities && msg.opportunities.length > 0) {
+          appState.opportunities = msg.opportunities;
+          document.getElementById('header-cache-count').innerText = msg.opportunities.length;
+          document.getElementById('radar-count-badge').innerText = msg.opportunities.length;
+          renderRadarTable();
+          renderDashboardTopRadar();
+        }
+        if (msg.live_positions || msg.paper_positions) {
+          appState.livePositions = msg.live_positions || [];
+          appState.paperPositions = msg.paper_positions || [];
+          renderPositions();
+        }
+        if (msg.paper_wallet) {
+          appState.paperWallet = msg.paper_wallet;
+          renderWalletStats(msg.paper_wallet);
+        }
+      }
+    }
+
+    async function fetchInitialData() {
+      try {
+        const [statusRes, scanRes, posRes, healthRes] = await Promise.all([
+          apiFetch('/api/status'),
+          apiFetch('/api/scan'),
+          apiFetch('/api/positions'),
+          apiFetch('/api/health')
+        ]);
+
+        if (statusRes.version) {
+          document.getElementById('badge-version').innerText = `v${statusRes.version}`;
+          const pnlEl = document.getElementById('stat-realized-pnl');
+          if (pnlEl) {
+            pnlEl.innerText = `${statusRes.total_realized_pnl_usd >= 0 ? '+' : ''}$${statusRes.total_realized_pnl_usd.toFixed(4)}`;
+            pnlEl.className = `text-xl sm:text-2xl font-num font-bold mt-1.5 tracking-tight ${statusRes.total_realized_pnl_usd >= 0 ? 'text-emerald-500' : 'text-rose-500'}`;
+          }
+          if (statusRes.total_closed_trades !== undefined) {
+            const elTrades = document.getElementById('stat-trade-count');
+            if (elTrades) elTrades.innerText = statusRes.total_closed_trades;
+            const elWinRate = document.getElementById('stat-win-rate');
+            if (elWinRate) elWinRate.innerText = `${statusRes.win_rate_pct.toFixed(1)}%`;
+          }
+        }
+
+        if (scanRes.opportunities && scanRes.opportunities.length > 0) {
+          appState.opportunities = scanRes.opportunities;
+          document.getElementById('header-cache-count').innerText = scanRes.opportunities.length;
+          document.getElementById('radar-count-badge').innerText = scanRes.opportunities.length;
+          renderRadarTable();
+          renderDashboardTopRadar();
+        }
+
+        if (posRes.live_positions || posRes.paper_positions) {
+          appState.livePositions = posRes.live_positions || [];
+          appState.paperPositions = posRes.paper_positions || [];
+          renderPositions();
+          if (posRes.paper_wallet) {
+            appState.paperWallet = posRes.paper_wallet;
+            renderWalletStats(posRes.paper_wallet);
+          }
+        }
+
+        if (healthRes.assessment) {
+          renderHealthAssessment(healthRes.assessment);
+        }
+      } catch (e) {
+        console.warn('Initial data load warning:', e);
+      }
+    }
+
+    function renderHealthAssessment(assessment) {
+      if (!assessment) return;
+      const bn = assessment.binance;
+      const hl = assessment.hyperliquid;
+
+      if (bn) {
+        const bnAlloc = bn.total_margin_used_usd || 0;
+        const bnUtil = bn.margin_utilization_pct || 0;
+        const bnFree = bn.free_margin_usd || 0;
+        const bnLiq = bn.min_liquidation_distance_pct || 50;
+
+        const elBnUtil = document.getElementById('bn-health-util');
+        if (elBnUtil) elBnUtil.innerText = `已用 $${bnAlloc.toFixed(2)} (${bnUtil.toFixed(1)}%)`;
+        const elBnBar = document.getElementById('bn-util-bar');
+        if (elBnBar) elBnBar.style.width = `${Math.min(bnUtil, 100)}%`;
+        const elBnFree = document.getElementById('bn-free-margin');
+        if (elBnFree) elBnFree.innerText = `$${bnFree.toFixed(2)}`;
+        const elBnLiq = document.getElementById('bn-liq-dist');
+        if (elBnLiq) elBnLiq.innerText = `${bnLiq.toFixed(1)}%`;
+      }
+
+      if (hl) {
+        const hlAlloc = hl.total_margin_used_usd || 0;
+        const hlUtil = hl.margin_utilization_pct || 0;
+        const hlFree = hl.free_margin_usd || 0;
+        const hlLiq = hl.min_liquidation_distance_pct || 50;
+
+        const elHlUtil = document.getElementById('hl-health-util');
+        if (elHlUtil) elHlUtil.innerText = `已用 $${hlAlloc.toFixed(2)} (${hlUtil.toFixed(1)}%)`;
+        const elHlBar = document.getElementById('hl-util-bar');
+        if (elHlBar) elHlBar.style.width = `${Math.min(hlUtil, 100)}%`;
+        const elHlFree = document.getElementById('hl-free-margin');
+        if (elHlFree) elHlFree.innerText = `$${hlFree.toFixed(2)}`;
+        const elHlLiq = document.getElementById('hl-liq-dist');
+        if (elHlLiq) elHlLiq.innerText = `${hlLiq.toFixed(1)}%`;
+      }
+
+      const badge = document.getElementById('rebalance-status-badge');
+      const advText = document.getElementById('rebalance-advisory-text');
+      const healthBadge = document.getElementById('stat-health-badge');
+
+      if (assessment.rebalance_required) {
+        if (badge) {
+          badge.className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20';
+          badge.innerText = '建议再平衡';
+        }
+        if (advText) {
+          advText.innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-500 inline mr-1"></i><span>${assessment.risk_status || '需执行跨所资金划转'}</span>`;
+        }
+        if (healthBadge) {
+          healthBadge.className = 'px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-500 text-[10px] font-semibold border border-amber-500/20';
+          healthBadge.innerText = 'REBALANCE';
+        }
+      } else {
+        if (badge) {
+          badge.className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20';
+          badge.innerText = '资金完全平衡';
+        }
+        if (advText) {
+          advText.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500 inline mr-1"></i><span>${assessment.risk_status || '两所资金配比健康，无需执行划转。'}</span>`;
+        }
+        if (healthBadge) {
+          const isHealthy = (!bn || bn.is_healthy) && (!hl || hl.is_healthy);
+          healthBadge.className = isHealthy ? 'px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/20' : 'px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-500 text-[10px] font-semibold border border-rose-500/20';
+          healthBadge.innerText = isHealthy ? 'HEALTHY' : 'WARNING';
+        }
+      }
+      lucide.createIcons();
+    }
+
+    function renderWalletStats(wallet) {
+      if (!wallet) return;
+      const bnEq = (wallet.binance.cash_balance_usd || 0) + (wallet.binance.unrealized_pnl_usd || 0);
+      const hlEq = (wallet.hyperliquid.cash_balance_usd || 0) + (wallet.hyperliquid.unrealized_pnl_usd || 0);
+      const totalEq = bnEq + hlEq;
+
+      document.getElementById('stat-total-equity').innerText = `$${totalEq.toFixed(2)}`;
+      document.getElementById('stat-bn-equity').innerText = `$${bnEq.toFixed(2)}`;
+      document.getElementById('stat-hl-equity').innerText = `$${hlEq.toFixed(2)}`;
+
+      const totalFees = (wallet.binance.total_fees_paid_usd || 0) + (wallet.hyperliquid.total_fees_paid_usd || 0);
+      const totalFunding = (wallet.binance.total_funding_usd || 0) + (wallet.hyperliquid.total_funding_usd || 0);
+      
+      const netFunding = totalFunding - totalFees;
+      const elFundingIncome = document.getElementById('stat-funding-income');
+      if (elFundingIncome) {
+        elFundingIncome.innerText = `${netFunding >= 0 ? '+' : '-'}$${Math.abs(netFunding).toFixed(4)}`;
+        elFundingIncome.className = `text-xl sm:text-2xl font-num font-bold mt-1.5 tracking-tight ${netFunding >= 0 ? 'text-cyan-500' : 'text-rose-500'}`;
+      }
+
+      const elGross = document.getElementById('stat-gross-funding');
+      if (elGross) elGross.innerText = `+$${totalFunding.toFixed(4)}`;
+      const elFees = document.getElementById('stat-total-fees');
+      if (elFees) elFees.innerText = `-$${totalFees.toFixed(4)}`;
+
+      const totalAllocated = (wallet.binance.allocated_margin_usd || 0) + (wallet.hyperliquid.allocated_margin_usd || 0);
+      const utilPct = totalEq > 0 ? (totalAllocated / totalEq) * 100 : 0;
+      document.getElementById('stat-margin-util').innerText = `(已用 ${utilPct.toFixed(1)}%)`;
+
+      const bnAllocated = wallet.binance.allocated_margin_usd || 0;
+      const hlAllocated = wallet.hyperliquid.allocated_margin_usd || 0;
+      const bnUtil = bnEq > 0 ? (bnAllocated / bnEq) * 100 : 0;
+      const hlUtil = hlEq > 0 ? (hlAllocated / hlEq) * 100 : 0;
+
+      document.getElementById('bn-health-util').innerText = `已用 $${bnAllocated.toFixed(2)} (${bnUtil.toFixed(1)}%)`;
+      document.getElementById('bn-util-bar').style.width = `${Math.min(bnUtil, 100)}%`;
+      document.getElementById('bn-free-margin').innerText = `$${Math.max(0, bnEq - bnAllocated).toFixed(2)}`;
+
+      document.getElementById('hl-health-util').innerText = `已用 $${hlAllocated.toFixed(2)} (${hlUtil.toFixed(1)}%)`;
+      document.getElementById('hl-util-bar').style.width = `${Math.min(hlUtil, 100)}%`;
+      document.getElementById('hl-free-margin').innerText = `$${Math.max(0, hlEq - hlAllocated).toFixed(2)}`;
+    }
+
+    function renderRadarTable() {
+      const tbody = document.getElementById('radar-table-body');
+      if (!tbody) return;
+
+      const keyword = (document.getElementById('radar-search')?.value || '').toUpperCase().trim();
+      let list = appState.opportunities;
+
+      document.getElementById('count-all').innerText = list.length;
+
+      if (appState.radarFilter === 'high_apr') {
+        list = list.filter(o => o.net_spread_apr_pct >= 50.0);
+      } else if (appState.radarFilter === 'pos_cashflow') {
+        list = list.filter(o => o.projected_1h_net_bps > 0);
+      } else if (appState.radarFilter === 'liquid') {
+        list = list.filter(o => o.total_open_interest_usd >= 1_000_000);
+      }
+
+      if (keyword) {
+        list = list.filter(o => o.symbol.includes(keyword));
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10 text-[var(--text-muted)]">未找到匹配的套利标的</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map(o => {
+        const isHlShort = o.hyperliquid_side === 'Short';
+        const actionHtml = `
+          <span class="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] bg-[var(--bg-card-secondary)] border border-[var(--border-color)]">
+            <span class="text-[var(--text-muted)]">HL:</span><b class="${isHlShort ? 'text-rose-500' : 'text-emerald-500'}">${o.hyperliquid_side}</b>
+            <span class="text-slate-400 dark:text-slate-600">/</span>
+            <span class="text-[var(--text-muted)]">BN:</span><b class="${!isHlShort ? 'text-rose-500' : 'text-emerald-500'}">${o.binance_side}</b>
+          </span>
+        `;
+
+        const beStr = o.est_break_even_hours > 500 ? '>500h' : `${o.est_break_even_hours.toFixed(1)}h`;
+        const proj1hColor = o.projected_1h_net_bps > 0 ? 'text-emerald-500 font-semibold' : 'text-slate-400';
+        
+        let tierBadge = `<span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-800 text-[var(--text-muted)]">MID</span>`;
+        if (o.liquidity_tier && o.liquidity_tier.includes('PRIME')) {
+          tierBadge = `<span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">PRIME</span>`;
+        } else if (o.liquidity_tier && o.liquidity_tier.includes('LIQUID')) {
+          tierBadge = `<span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">LIQUID</span>`;
+        }
+
+        return `
+          <tr class="hover:bg-[var(--table-hover)] transition">
+            <td class="py-2.5 px-3.5 font-bold text-[var(--text-main)] flex items-center space-x-2">
+              <span class="w-6 h-6 rounded-md bg-[var(--bg-card-secondary)] flex items-center justify-center font-bold text-[11px] text-emerald-500 border border-[var(--border-color)]">${o.symbol.slice(0, 2)}</span>
+              <span class="text-xs font-bold">${o.symbol}</span>
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="text-[var(--text-main)] font-medium">${formatPrice(o.binance_mark_price)}</div>
+              <div class="text-[10px] text-amber-500 font-medium">${o.binance_apr_pct >= 0 ? '+' : ''}${o.binance_apr_pct.toFixed(2)}% APR</div>
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="text-[var(--text-main)] font-medium">${formatPrice(o.hyperliquid_mark_price)}</div>
+              <div class="text-[10px] text-cyan-500 font-medium">${o.hyperliquid_apr_pct >= 0 ? '+' : ''}${o.hyperliquid_apr_pct.toFixed(2)}% APR</div>
+            </td>
+            <td class="py-2.5 px-3 text-right">
+              <span class="text-xs font-bold ${o.net_spread_apr_pct >= 50 ? 'text-emerald-500' : 'text-[var(--text-main)]'}">${o.net_spread_apr_pct.toFixed(2)}%</span>
+            </td>
+            <td class="py-2.5 px-3 text-center">${actionHtml}</td>
+            <td class="py-2.5 px-2 text-right text-[var(--text-muted)]">${beStr}</td>
+            <td class="py-2.5 px-2 text-right ${proj1hColor}">${o.projected_1h_net_bps > 0 ? '+' : ''}${o.projected_1h_net_bps.toFixed(2)} bps</td>
+            <td class="py-2.5 px-2 text-right text-[var(--text-muted)]">$${((o.binance_volume_24h_usd || 0) / 1_000_000).toFixed(1)}M</td>
+            <td class="py-2.5 px-2 text-center">${tierBadge}</td>
+            <td class="py-2.5 px-3 text-right">
+              <button onclick="openPaperTradeModalFor('${o.symbol}')" class="px-2.5 py-1 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20 transition text-[11px]">
+                开仓
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    function setRadarFilter(filter) {
+      appState.radarFilter = filter;
+      document.querySelectorAll('.rf-btn').forEach(btn => {
+        btn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-card-secondary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition';
+      });
+      const activeBtn = document.getElementById(`rf-btn-${filter}`);
+      if (activeBtn) {
+        activeBtn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition';
+      }
+      renderRadarTable();
+    }
+
+    function filterRadarTable() {
+      renderRadarTable();
+    }
+
+    function renderDashboardTopRadar() {
+      const container = document.getElementById('dashboard-top-radar-table');
+      if (!container) return;
+
+      const top5 = appState.opportunities.slice(0, 5);
+      if (top5.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-[var(--text-muted)] text-xs">暂无数据</div>`;
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-[var(--border-color)] text-[var(--text-muted)] text-[11px] font-semibold">
+              <th class="py-2 px-3">标的</th>
+              <th class="py-2 px-2">两所价格 (BN / HL)</th>
+              <th class="py-2 px-2 text-right">年化净利差 (APR)</th>
+              <th class="py-2 px-3 text-center">对冲方向</th>
+              <th class="py-2 px-2 text-right">预计1h净现金流</th>
+              <th class="py-2 px-3 text-right">快捷操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[var(--border-color)] font-num">
+            ${top5.map(o => `
+              <tr class="hover:bg-[var(--table-hover)] transition">
+                <td class="py-2 px-3 font-bold text-[var(--text-main)]">${o.symbol}</td>
+                <td class="py-2 px-2 text-[var(--text-muted)]">${formatPrice(o.binance_mark_price)} / ${formatPrice(o.hyperliquid_mark_price)}</td>
+                <td class="py-2 px-2 text-right font-bold text-emerald-500">${o.net_spread_apr_pct.toFixed(2)}%</td>
+                <td class="py-2 px-3 text-center text-[11px]">
+                  <span class="px-2 py-0.5 rounded bg-[var(--bg-card-secondary)] text-[var(--text-main)] font-medium border border-[var(--border-color)]">HL: ${o.hyperliquid_side} / BN: ${o.binance_side}</span>
+                </td>
+                <td class="py-2 px-2 text-right ${o.projected_1h_net_bps > 0 ? 'text-emerald-500 font-medium' : 'text-slate-400'}">${o.projected_1h_net_bps > 0 ? '+' : ''}${o.projected_1h_net_bps.toFixed(2)} bps</td>
+                <td class="py-2 px-3 text-right">
+                  <button onclick="openPaperTradeModalFor('${o.symbol}')" class="px-2 py-0.8 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20 text-[11px]">
+                    开仓
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderPositions() {
+      const all = [...appState.livePositions, ...appState.paperPositions];
+      const countBadge = document.getElementById('pos-count-badge');
+      const mobBadge = document.getElementById('mob-pos-badge');
+      
+      if (countBadge) countBadge.innerText = all.length;
+      if (mobBadge) {
+        mobBadge.className = all.length > 0 ? 'absolute top-0 right-1 w-2 h-2 rounded-full bg-amber-500 inline-block' : 'hidden';
+      }
+      document.getElementById('stat-active-pairs').innerText = `${all.length} 对`;
+
+      let hourlyRunrate = 0.0;
+      for (const p of all) {
+        const apr = p.entry_spread_apr || p.current_spread_apr || 0;
+        const notional = p.nominal_value_usd || 0;
+        hourlyRunrate += notional * (apr / 100.0) / 8760.0;
+      }
+      const elRunrate = document.getElementById('stat-hourly-runrate');
+      if (elRunrate) {
+        elRunrate.innerText = `~$${hourlyRunrate.toFixed(4)}/h`;
+      }
+
+      const dashDeck = document.getElementById('dashboard-positions-deck');
+      if (dashDeck) {
+        if (all.length === 0) {
+          dashDeck.innerHTML = `<div class="text-center py-5 text-xs text-[var(--text-muted)]">当前无活跃持仓，套利引擎正在全时段扫描中...</div>`;
+        } else {
+          dashDeck.innerHTML = all.map(p => {
+            const pnl = p.realized_pnl_usd !== undefined && p.realized_pnl_usd !== null ? p.realized_pnl_usd : 0;
+            const funding = p.total_funding_usd !== undefined ? p.total_funding_usd : (p.accumulated_funding_usd || 0);
+            return `
+              <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] flex items-center justify-between font-num">
+                <div class="flex items-center space-x-3">
+                  <span class="font-bold text-xs text-[var(--text-main)]">${p.symbol}</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-800 text-[var(--text-muted)] border border-[var(--border-color)]">BN: ${p.binance_side} / HL: ${p.hyperliquid_side}</span>
+                  <span class="text-xs text-[var(--text-muted)]">名义价值: <b class="text-[var(--text-main)] font-semibold">$${(p.nominal_value_usd || 0).toFixed(2)}</b></span>
+                </div>
+                <div class="flex items-center space-x-3">
+                  <div class="text-right text-xs">
+                    <span class="text-[var(--text-muted)]">已收资金费: </span>
+                    <span class="text-cyan-500 font-semibold">+$${funding.toFixed(4)}</span>
+                  </div>
+                  <button onclick="executeUnwind('${p.symbol}')" class="px-2.5 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 font-medium text-xs border border-rose-500/20 transition">
+                    平仓
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      const container = document.getElementById('positions-container');
+      if (!container) return;
+
+      if (all.length === 0) {
+        container.innerHTML = `
+          <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-10 text-center shadow-sm space-y-2.5">
+            <i data-lucide="shield-check" class="w-8 h-8 text-emerald-500 mx-auto"></i>
+            <div class="font-semibold text-xs text-[var(--text-main)]">当前无运行中的套利仓位</div>
+            <p class="text-xs text-[var(--text-muted)] max-w-sm mx-auto">套利引擎处于全自动守护状态，当两所资金费率利差与回本窗口满足条件时将自动建仓。</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = all.map(p => {
+        const pnl = p.realized_pnl_usd !== undefined && p.realized_pnl_usd !== null ? p.realized_pnl_usd : 0;
+        const pnlColor = pnl >= 0 ? 'text-emerald-500' : 'text-rose-500';
+        const isLive = appState.livePositions.some(lp => lp.symbol === p.symbol);
+        const funding = p.total_funding_usd !== undefined ? p.total_funding_usd : (p.accumulated_funding_usd || 0);
+        const ticksCount = p.funding_ticks_count || 0;
+        const bnFee = p.binance_entry_fee_usd || 0;
+        const hlFee = p.hyperliquid_entry_fee_usd || 0;
+
+        return `
+          <div class="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4 shadow-sm space-y-3.5 transition hover:border-slate-700 font-num">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-color)] pb-3">
+              <div class="flex items-center space-x-3">
+                <span class="w-8 h-8 rounded-lg bg-[var(--bg-card-secondary)] border border-[var(--border-color)] flex items-center justify-center font-bold text-emerald-500 text-xs">${p.symbol.slice(0, 2)}</span>
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-sm font-bold text-[var(--text-main)]">${p.symbol} 对冲套利</span>
+                    ${isLive ? '<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">LIVE</span>' : '<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">SIMULATED</span>'}
+                  </div>
+                  <div class="text-[11px] text-[var(--text-muted)] mt-0.5">开仓时间: ${new Date(p.opened_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })} (UTC+8)</div>
+                </div>
+              </div>
+              <div class="flex items-center space-x-3">
+                <div class="text-right">
+                  <div class="text-xs text-[var(--text-muted)]">名义对冲价值</div>
+                  <div class="text-sm font-bold text-[var(--text-main)]">$${(p.nominal_value_usd || 0).toFixed(2)}</div>
+                </div>
+                <button onclick="executeUnwind('${p.symbol}')" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 font-medium text-xs border border-rose-500/20 transition flex items-center space-x-1">
+                  <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                  <span>一键对冲平仓</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-1.5">
+                <div class="flex justify-between text-xs">
+                  <span class="font-semibold text-amber-500 flex items-center space-x-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    <span>Binance 腿</span>
+                  </span>
+                  <span class="font-semibold ${p.binance_side === 'Long' ? 'text-emerald-500' : 'text-rose-500'}">${p.binance_side} ${p.binance_qty} ${p.symbol}</span>
+                </div>
+                <div class="flex justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>开仓均价: <b class="text-[var(--text-main)] font-semibold">${formatPrice(p.binance_entry_price)}</b></span>
+                  <span>开仓费用: <b class="text-rose-500">-$${bnFee.toFixed(4)}</b></span>
+                </div>
+              </div>
+
+              <div class="bg-[var(--bg-card-secondary)] p-3 rounded-lg border border-[var(--border-color)] space-y-1.5">
+                <div class="flex justify-between text-xs">
+                  <span class="font-semibold text-cyan-500 flex items-center space-x-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                    <span>Hyperliquid 腿</span>
+                  </span>
+                  <span class="font-semibold ${p.hyperliquid_side === 'Long' ? 'text-emerald-500' : 'text-rose-500'}">${p.hyperliquid_side} ${p.hyperliquid_qty} ${p.symbol}</span>
+                </div>
+                <div class="flex justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>开仓均价: <b class="text-[var(--text-main)] font-semibold">${formatPrice(p.hyperliquid_entry_price)}</b></span>
+                  <span>开仓费用: <b class="${hlFee === 0 ? 'text-emerald-500' : 'text-rose-500'} font-semibold">${hlFee === 0 ? '$0.00 (Maker)' : `-$${hlFee.toFixed(4)}`}</b></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 bg-[var(--bg-card-secondary)] p-2.5 rounded-lg border border-[var(--border-color)] text-center text-xs">
+              <div>
+                <div class="text-[10px] text-[var(--text-muted)]">入场利差 APR</div>
+                <div class="font-bold text-emerald-500 text-xs">${(p.entry_spread_apr || 0).toFixed(2)}%</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-[var(--text-muted)]">累计已收资金费</div>
+                <div class="font-bold text-cyan-500 text-xs">+$${funding.toFixed(4)} (${ticksCount} 次)</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-[var(--text-muted)]">实时基差未实现 PnL</div>
+                <div class="font-bold ${pnlColor} text-xs">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(4)}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    async function fetchConfig() {
+      try {
+        const cfg = await apiFetch('/api/config');
+        appState.config = cfg;
+        document.getElementById('cfg-min-open-apr').value = cfg.strategy.min_open_apr_pct;
+        document.getElementById('cfg-min-carry-apr').value = cfg.strategy.min_carry_apr_pct;
+        document.getElementById('cfg-min-exit-apr').value = cfg.strategy.min_exit_apr_pct;
+        document.getElementById('cfg-max-pos-usd').value = cfg.strategy.max_position_usd_per_pair;
+        document.getElementById('cfg-max-active-pos').value = cfg.strategy.max_active_positions;
+        document.getElementById('cfg-leverage').value = cfg.strategy.leverage;
+        document.getElementById('cfg-stop-loss-bps').value = cfg.strategy.stop_loss_basis_bps;
+        document.getElementById('cfg-take-profit-bps').value = cfg.strategy.take_profit_basis_bps;
+        document.getElementById('cfg-max-holding-hours').value = cfg.strategy.max_holding_hours;
+      } catch (e) {
+        showToast('获取配置失败: ' + e.message, 'error');
+      }
+    }
+
+    async function saveConfigToServer() {
+      if (!appState.config) return;
+      const updated = JSON.parse(JSON.stringify(appState.config));
+
+      updated.strategy.min_open_apr_pct = parseFloat(document.getElementById('cfg-min-open-apr').value);
+      updated.strategy.min_carry_apr_pct = parseFloat(document.getElementById('cfg-min-carry-apr').value);
+      updated.strategy.min_exit_apr_pct = parseFloat(document.getElementById('cfg-min-exit-apr').value);
+      updated.strategy.max_position_usd_per_pair = parseFloat(document.getElementById('cfg-max-pos-usd').value);
+      updated.strategy.max_active_positions = parseInt(document.getElementById('cfg-max-active-pos').value);
+      updated.strategy.leverage = parseFloat(document.getElementById('cfg-leverage').value);
+      updated.strategy.stop_loss_basis_bps = parseFloat(document.getElementById('cfg-stop-loss-bps').value);
+      updated.strategy.take_profit_basis_bps = parseFloat(document.getElementById('cfg-take-profit-bps').value);
+      updated.strategy.max_holding_hours = parseFloat(document.getElementById('cfg-max-holding-hours').value);
+
+      try {
+        const res = await apiFetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+        if (res.status === 'ok') {
+          showToast('参数热更新成功，已立即生效', 'success');
+        } else {
+          showToast('更新失败: ' + res.message, 'error');
+        }
+      } catch (e) {
+        showToast('请求异常: ' + e.message, 'error');
+      }
+    }
+
+    async function executeUnwind(symbol) {
+      if (appState.tgWebApp?.HapticFeedback) appState.tgWebApp.HapticFeedback.impactOccurred('medium');
+      closeModal('modal-unwind-all');
+      try {
+        const res = await apiFetch('/api/action/unwind', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol })
+        });
+        if (res.status === 'ok') {
+          showToast(`平仓指令已发送: ${symbol}`, 'success');
+          fetchInitialData();
+        } else {
+          showToast('平仓失败: ' + res.message, 'error');
+        }
+      } catch (e) {
+        showToast('请求异常: ' + e.message, 'error');
+      }
+    }
+
+    function openPaperTradeModalFor(symbol) {
+      if (appState.tgWebApp?.HapticFeedback) appState.tgWebApp.HapticFeedback.impactOccurred('light');
+      document.getElementById('modal-pt-symbol').value = symbol;
+      openModal('modal-paper-trade');
+    }
+
+    async function executePaperTrade(action) {
+      if (appState.tgWebApp?.HapticFeedback) appState.tgWebApp.HapticFeedback.impactOccurred('light');
+      const symbol = document.getElementById('modal-pt-symbol').value;
+      const margin = parseFloat(document.getElementById('modal-pt-margin').value);
+      closeModal('modal-paper-trade');
+
+      try {
+        const res = await apiFetch('/api/action/paper_trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol, margin_usd: margin, action })
+        });
+        if (res.status === 'ok') {
+          showToast(`模拟${action === 'open' ? '开仓' : '平仓'}成功: ${symbol}`, 'success');
+          fetchInitialData();
+        } else {
+          showToast('模拟下单失败: ' + res.message, 'error');
+        }
+      } catch (e) {
+        showToast('请求异常: ' + e.message, 'error');
+      }
+    }
+
+    async function fetchJournalEntries() {
+      const type = document.getElementById('journal-filter-type')?.value || '';
+      try {
+        const res = await apiFetch(`/api/journal?event_type=${encodeURIComponent(type)}&limit=50`);
+        const tbody = document.getElementById('journal-table-body');
+        if (!tbody) return;
+
+        if (!res.entries || res.entries.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-[var(--text-muted)]">暂无流水记录</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = res.entries.map(e => {
+          const typeName = e.type;
+          const d = e.data;
+          const time = new Date(d.timestamp).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+          let typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-800 text-[var(--text-main)]">${typeName}</span>`;
+          let detail = '';
+          let notional = '-';
+          let pnlOrFunding = '-';
+          let fees = '-';
+
+          if (typeName === 'Funding') {
+            typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">FUNDING</span>`;
+            detail = `${d.exchange || ''} ${d.side || ''} (费率: ${(d.rate_bps || 0).toFixed(2)} bps)`;
+            notional = `$${(d.notional_usd || 0).toFixed(2)}`;
+            const pay = d.funding_payment_usd || 0;
+            pnlOrFunding = `<span class="${pay >= 0 ? 'text-cyan-500' : 'text-rose-500'} font-semibold">${pay >= 0 ? '+' : ''}$${pay.toFixed(4)}</span>`;
+            fees = '$0.0000';
+          } else if (typeName === 'OpenFill') {
+            typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">OPEN</span>`;
+            detail = `HL: ${d.hyperliquid_side} ${formatPrice(d.hyperliquid_price)} / BN: ${d.binance_side} ${formatPrice(d.binance_price)}`;
+            notional = `$${(d.total_notional_usd || d.notional_usd || 0).toFixed(2)}`;
+            pnlOrFunding = `<span class="text-slate-400">已完全对冲</span>`;
+            fees = `$${(d.total_open_fees_usd || 0).toFixed(4)}`;
+          } else if (typeName === 'CloseFill') {
+            typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-500 border border-rose-500/20">CLOSE</span>`;
+            detail = `HL: ${formatPrice(d.hyperliquid_exit_price)} / BN: ${formatPrice(d.binance_exit_price)} (基差: $${(d.gross_basis_pnl_usd || 0).toFixed(4)})`;
+            const pnlVal = d.net_realized_pnl_usd || 0;
+            pnlOrFunding = `<span class="${pnlVal >= 0 ? 'text-emerald-500' : 'text-rose-500'} font-semibold">${pnlVal >= 0 ? '+' : ''}$${pnlVal.toFixed(4)}</span>`;
+            fees = `$${(d.total_roundtrip_fees_usd || 0).toFixed(4)}`;
+          } else if (typeName === 'Intent') {
+            typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-500 border border-purple-500/20">INTENT</span>`;
+            detail = `${d.reason || '策略触发开仓决策'}`;
+            notional = `$${(d.target_notional_usd || 0).toFixed(2)}`;
+            pnlOrFunding = `<span class="text-emerald-500 font-medium">+${(d.net_spread_apr_pct || 0).toFixed(2)}% APR</span>`;
+            fees = '-';
+          } else if (typeName === 'RiskAlert') {
+            typeBadge = `<span class="px-2 py-0.2 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">RISK</span>`;
+            detail = `${d.event_type || ''}: ${d.details || ''} (${d.action_taken || ''})`;
+            pnlOrFunding = `<span class="text-amber-500 font-medium">风控拦截</span>`;
+          }
+
+          return `
+            <tr class="hover:bg-[var(--table-hover)] transition">
+              <td class="py-2.5 px-3.5 text-[var(--text-muted)]">${time}</td>
+              <td class="py-2.5 px-2">${typeBadge}</td>
+              <td class="py-2.5 px-2 font-bold text-[var(--text-main)]">${d.symbol}</td>
+              <td class="py-2.5 px-3 text-[var(--text-main)]">${detail}</td>
+              <td class="py-2.5 px-2 text-right text-[var(--text-muted)]">${notional}</td>
+              <td class="py-2.5 px-2 text-right">${pnlOrFunding}</td>
+              <td class="py-2.5 px-3 text-right ${fees.startsWith('$') && fees !== '$0.0000' ? 'text-rose-500' : 'text-[var(--text-muted)]'}">${fees.startsWith('$') && fees !== '$0.0000' ? '-' + fees : fees}</td>
+            </tr>
+          `;
+        }).join('');
+        lucide.createIcons();
+      } catch (e) {
+        console.warn('Journal fetch error:', e);
+      }
+    }
+
+    // 统一 API 客户端
+    async function apiFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      if (appState.tgWebApp?.initData) {
+        options.headers['X-TG-Init-Data'] = appState.tgWebApp.initData;
+      }
+      const token = new URLSearchParams(location.search).get('token');
+      if (token) {
+        options.headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      return await res.json();
+    }
+
+    // 模态弹窗辅助
+    function openModal(id) {
+      const m = document.getElementById(id);
+      if (m) {
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+      }
+    }
+
+    function closeModal(id) {
+      const m = document.getElementById(id);
+      if (m) {
+        m.classList.remove('flex');
+        m.classList.add('hidden');
+      }
+    }
+
+    // Toast 提示
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const el = document.createElement('div');
+      const bg = type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 border border-slate-700 text-white';
+      el.className = `${bg} px-3.5 py-2 rounded-lg shadow-lg text-xs font-medium transition-all duration-300 transform translate-y-2 opacity-0 flex items-center space-x-2`;
+      el.innerHTML = `<span>${type === 'error' ? '•' : '✓'}</span><span>${msg}</span>`;
+      container.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        el.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => el.remove(), 300);
+      }, 3000);
+    }
+
+    // 顶部时钟与结算倒计时
+    function startClock() {
+      setInterval(() => {
+        const now = new Date();
+        document.getElementById('clock-utc').innerText = `${now.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })} UTC+8`;
+        const minsLeft = 59 - now.getUTCMinutes();
+        const secsLeft = 59 - now.getUTCSeconds();
+        document.getElementById('funding-countdown').innerText = `Settlement in ${minsLeft}m ${secsLeft}s`;
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

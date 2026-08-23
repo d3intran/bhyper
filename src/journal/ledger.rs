@@ -173,6 +173,10 @@ impl TradeJournal {
         Self { path }
     }
 
+    pub fn open_default() -> Self {
+        Self::new(None)
+    }
+
     pub fn append(&self, entry: &JournalEntry) -> Result<()> {
         let mut file = OpenOptions::new()
             .create(true)
@@ -237,10 +241,19 @@ impl TradeJournal {
             if let Some(ref etype) = filter.event_type {
                 let matches = match e {
                     JournalEntry::Intent(_) => etype.eq_ignore_ascii_case("INTENT"),
-                    JournalEntry::OpenFill(_) => etype.eq_ignore_ascii_case("OPEN"),
+                    JournalEntry::OpenFill(_) => {
+                        etype.eq_ignore_ascii_case("OPEN")
+                            || etype.eq_ignore_ascii_case("OPENFILL")
+                    }
                     JournalEntry::Funding(_) => etype.eq_ignore_ascii_case("FUNDING"),
-                    JournalEntry::RiskAlert(_) => etype.eq_ignore_ascii_case("RISK"),
-                    JournalEntry::CloseFill(_) => etype.eq_ignore_ascii_case("CLOSE"),
+                    JournalEntry::RiskAlert(_) => {
+                        etype.eq_ignore_ascii_case("RISK")
+                            || etype.eq_ignore_ascii_case("RISKALERT")
+                    }
+                    JournalEntry::CloseFill(_) => {
+                        etype.eq_ignore_ascii_case("CLOSE")
+                            || etype.eq_ignore_ascii_case("CLOSEFILL")
+                    }
                 };
                 if !matches {
                     return false;
@@ -250,9 +263,11 @@ impl TradeJournal {
         });
 
         let mut results: Vec<JournalEntry> = filtered.collect();
+        // Return latest entries first (newest on top)
+        results.reverse();
         if let Some(limit) = filter.limit {
             if results.len() > limit {
-                results = results.into_iter().rev().take(limit).rev().collect();
+                results.truncate(limit);
             }
         }
         Ok(results)

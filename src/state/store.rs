@@ -23,8 +23,8 @@ pub struct PersistentStateData {
 
 #[derive(Debug, Clone)]
 pub struct StateStore {
-    path: PathBuf,
-    data: PersistentStateData,
+    pub path: PathBuf,
+    pub data: PersistentStateData,
 }
 
 impl StateStore {
@@ -40,6 +40,22 @@ impl StateStore {
         if path.exists() {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read state file at {}", path.display()))?;
+            if content.trim().is_empty() {
+                let initial_data = PersistentStateData {
+                    version: 1,
+                    active_positions: HashMap::new(),
+                    trade_history: Vec::new(),
+                    total_realized_pnl_usd: 0.0,
+                    total_accumulated_funding_usd: 0.0,
+                    last_updated_at: Utc::now(),
+                };
+                let json_str = serde_json::to_string_pretty(&initial_data)?;
+                let _ = fs::write(&path, json_str);
+                return Ok(Self {
+                    path,
+                    data: initial_data,
+                });
+            }
             let data: PersistentStateData = serde_json::from_str(&content)
                 .with_context(|| format!("Failed to parse state JSON at {}", path.display()))?;
             info!(

@@ -250,6 +250,7 @@ Inspect the append-only chronological ledger and quantitative PnL attribution re
 | `reset-paper`| Reset virtual paper trading wallet to fresh initial capital | `bhyper reset-paper --initial-capital 500` |
 | `paper-trade`| Manually execute single simulated open or close action | `bhyper paper-trade --symbol SUI --action open` |
 | `unwind` | Emergency unwind and close open position on both exchanges | `bhyper unwind --symbol SAGA` |
+| `web` | Launch embedded Web Dashboard & Telegram Mini App Server | `bhyper web --port 8080` |
 | `config` | Display active configuration and config file path | `bhyper config` |
 
 ---

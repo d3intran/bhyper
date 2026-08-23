@@ -14,6 +14,8 @@ pub struct Config {
     pub risk: RiskConfig,
     #[serde(default)]
     pub telegram: TelegramConfig,
+    #[serde(default)]
+    pub web: WebConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,6 +283,43 @@ pub struct TelegramConfig {
     pub alerts_enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebConfig {
+    #[serde(default = "default_web_host")]
+    pub host: String,
+    #[serde(default = "default_web_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    #[serde(default = "default_true")]
+    pub enable_tg_auth: bool,
+    #[serde(default = "default_true")]
+    pub enable_cf_auth: bool,
+    #[serde(default)]
+    pub cf_allowed_emails: Vec<String>,
+}
+
+fn default_web_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_web_port() -> u16 {
+    8080
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            host: default_web_host(),
+            port: default_web_port(),
+            auth_token: None,
+            enable_tg_auth: true,
+            enable_cf_auth: true,
+            cf_allowed_emails: Vec::new(),
+        }
+    }
+}
+
 impl Config {
     pub fn load_or_default<P: AsRef<Path>>(path: P) -> Result<Self> {
         let p = path.as_ref();
@@ -305,6 +344,22 @@ impl Config {
             let _ = std::fs::write(p, toml_str);
             Ok(default_cfg)
         }
+    }
+
+    pub fn save_to<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let p = path.as_ref();
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let toml_str = toml::to_string_pretty(self)
+            .context("Failed to serialize config to TOML")?;
+
+        let tmp_path = p.with_extension("tmp");
+        std::fs::write(&tmp_path, toml_str)
+            .with_context(|| format!("Failed to write temporary config to {}", tmp_path.display()))?;
+        std::fs::rename(&tmp_path, p)
+            .with_context(|| format!("Failed to rename {} to {}", tmp_path.display(), p.display()))?;
+        Ok(())
     }
 
     pub fn default_config_path() -> PathBuf {

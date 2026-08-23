@@ -6,6 +6,9 @@ target/
 # Local sensitive configuration & credentials
 config.toml
 config.local.toml
+*.local.*
+*.local
+vps_info.*
 *.key
 *.pem
 .env

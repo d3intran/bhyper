@@ -151,6 +151,16 @@ impl MarketDataCache {
         bn_ok && hl_ok
     }
 
+    /// Number of tracked symbols in cache
+    pub fn len(&self) -> usize {
+        self.inner.read().hyperliquid_rates.len()
+    }
+
+    /// Check if cache is empty
+    pub fn is_empty(&self) -> bool {
+        self.inner.read().hyperliquid_rates.is_empty()
+    }
+
     /// Get latest mark prices for a symbol (Binance, Hyperliquid)
     pub fn get_latest_prices(&self, symbol: &str) -> Option<(f64, f64)> {
         let sym_upper = symbol.to_ascii_uppercase();
@@ -165,6 +175,18 @@ impl MarketDataCache {
         } else {
             None
         }
+    }
+
+    /// Get latest Binance funding rate
+    pub fn get_binance_rate(&self, symbol: &str) -> Option<f64> {
+        let sym_upper = symbol.to_ascii_uppercase();
+        self.inner.read().binance_rates.get(&sym_upper).map(|r| r.funding_rate)
+    }
+
+    /// Get latest Hyperliquid funding rate
+    pub fn get_hyperliquid_rate(&self, symbol: &str) -> Option<f64> {
+        let sym_upper = symbol.to_ascii_uppercase();
+        self.inner.read().hyperliquid_rates.get(&sym_upper).map(|r| r.funding_rate)
     }
 
     /// Get latest opportunity for a specific symbol directly from in-memory cache
