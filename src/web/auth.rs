@@ -158,22 +158,36 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 }
 
 /// Validates request authentication headers across multiple strategies
-pub fn validate_auth(headers: &HeaderMap, query_str: Option<&str>, config: &Config) -> Result<AuthenticatedIdentity, (StatusCode, &'static str)> {
+pub fn validate_auth(
+    headers: &HeaderMap,
+    query_str: Option<&str>,
+    config: &Config,
+) -> Result<AuthenticatedIdentity, (StatusCode, &'static str)> {
     // Strategy 1: Cloudflare Zero Trust Header
     if config.web.enable_cf_auth {
         if let Some(cf_email_val) = headers.get("cf-access-authenticated-user-email") {
             if let Ok(email) = cf_email_val.to_str() {
                 if !email.is_empty() {
                     if config.web.cf_allowed_emails.is_empty()
-                        || config.web.cf_allowed_emails.iter().any(|e| e.eq_ignore_ascii_case(email))
+                        || config
+                            .web
+                            .cf_allowed_emails
+                            .iter()
+                            .any(|e| e.eq_ignore_ascii_case(email))
                     {
                         return Ok(AuthenticatedIdentity {
                             auth_type: "cloudflare_zero_trust".to_string(),
                             user_identifier: email.to_string(),
                         });
                     } else {
-                        warn!("Cloudflare Zero Trust email '{}' not in allowed list", email);
-                        return Err((StatusCode::FORBIDDEN, "Cloudflare Zero Trust email unauthorized"));
+                        warn!(
+                            "Cloudflare Zero Trust email '{}' not in allowed list",
+                            email
+                        );
+                        return Err((
+                            StatusCode::FORBIDDEN,
+                            "Cloudflare Zero Trust email unauthorized",
+                        ));
                     }
                 }
             }
@@ -182,14 +196,20 @@ pub fn validate_auth(headers: &HeaderMap, query_str: Option<&str>, config: &Conf
 
     // Strategy 2: Telegram Mini App `X-TG-Init-Data` or `X-Telegram-Init-Data` header
     if config.web.enable_tg_auth {
-        if let Some(tg_header) = headers.get("x-tg-init-data").or_else(|| headers.get("x-telegram-init-data")) {
+        if let Some(tg_header) = headers
+            .get("x-tg-init-data")
+            .or_else(|| headers.get("x-telegram-init-data"))
+        {
             if let Ok(init_data) = tg_header.to_str() {
                 if let Some(bot_token) = &config.telegram.bot_token {
                     match verify_telegram_init_data(init_data, bot_token, config.telegram.chat_id) {
                         Ok(identity) => return Ok(identity),
                         Err(e) => {
                             warn!("Telegram WebApp initData verification failed: {}", e);
-                            return Err((StatusCode::UNAUTHORIZED, "Invalid Telegram authentication"));
+                            return Err((
+                                StatusCode::UNAUTHORIZED,
+                                "Invalid Telegram authentication",
+                            ));
                         }
                     }
                 }
@@ -203,7 +223,10 @@ pub fn validate_auth(headers: &HeaderMap, query_str: Option<&str>, config: &Conf
             // Check Authorization: Bearer <token>
             if let Some(auth_val) = headers.get("authorization") {
                 if let Ok(auth_str) = auth_val.to_str() {
-                    if let Some(token) = auth_str.strip_prefix("Bearer ").or_else(|| auth_str.strip_prefix("bearer ")) {
+                    if let Some(token) = auth_str
+                        .strip_prefix("Bearer ")
+                        .or_else(|| auth_str.strip_prefix("bearer "))
+                    {
                         if constant_time_eq(token.trim(), required_token.trim()) {
                             return Ok(AuthenticatedIdentity {
                                 auth_type: "bearer_token".to_string(),
@@ -240,7 +263,10 @@ pub fn validate_auth(headers: &HeaderMap, query_str: Option<&str>, config: &Conf
                 }
             }
 
-            return Err((StatusCode::UNAUTHORIZED, "Missing or invalid authorization token"));
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                "Missing or invalid authorization token",
+            ));
         }
     }
 
@@ -276,7 +302,8 @@ pub async fn auth_middleware(
 
     // If requesting static HTML/CSS/JS frontend entry point, allow through
     let path = req.uri().path();
-    if path == "/" || path == "/index.html" || path.starts_with("/static") || path == "/favicon.ico" {
+    if path == "/" || path == "/index.html" || path.starts_with("/static") || path == "/favicon.ico"
+    {
         return Ok(next.run(req).await);
     }
 
@@ -301,8 +328,11 @@ mod tests {
 
         let fresh_ts = chrono::Utc::now().timestamp();
         let fresh_query = format!("auth_date={}&query_id=AAH&user=%7B%22id%22%3A987654321%2C%22first_name%22%3A%22Alex%22%7D", fresh_ts);
-        let fresh_check_str = format!("auth_date={}\nquery_id=AAH\nuser={{\"id\":987654321,\"first_name\":\"Alex\"}}", fresh_ts);
-        
+        let fresh_check_str = format!(
+            "auth_date={}\nquery_id=AAH\nuser={{\"id\":987654321,\"first_name\":\"Alex\"}}",
+            fresh_ts
+        );
+
         let mut mac_fresh = HmacSha256::new_from_slice(&secret_key).unwrap();
         mac_fresh.update(fresh_check_str.as_bytes());
         let fresh_hash = hex::encode(mac_fresh.finalize().into_bytes());

@@ -1,6 +1,6 @@
 [package]
 name = "bhyper"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["d3intran <d3intran@gmail.com>"]
 description = "⚡ Ultra Low-Latency Binance x Hyperliquid Cross-Exchange Funding Rate & Basis Arbitrage Engine"

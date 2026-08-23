@@ -9,7 +9,9 @@ use std::sync::Arc;
 use tracing::warn;
 
 pub async fn run(config: &Config, state_store: Arc<Mutex<StateStore>>) -> Result<()> {
-    println!("🔍 Fetching live exchange positions from Binance and Hyperliquid for reconciliation...");
+    println!(
+        "🔍 Fetching live exchange positions from Binance and Hyperliquid for reconciliation..."
+    );
     let bn_client = BinanceFuturesClient::new(
         config.binance.api_key.clone(),
         config.binance.api_secret.clone(),

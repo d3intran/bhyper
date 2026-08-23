@@ -10,11 +10,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use tracing::info;
 
-pub async fn run(
-    config: &Config,
-    state_store: Arc<Mutex<StateStore>>,
-    symbol: &str,
-) -> Result<()> {
+pub async fn run(config: &Config, state_store: Arc<Mutex<StateStore>>, symbol: &str) -> Result<()> {
     info!(
         "Emergency unwinding position for {} on both exchanges...",
         symbol
@@ -42,8 +38,10 @@ pub async fn run(
 
     let (target_pos, default_prec) = {
         let store = state_store.lock();
-        let pos = store.get_position(symbol).cloned().unwrap_or_else(|| {
-            ActiveArbitragePosition {
+        let pos = store
+            .get_position(symbol)
+            .cloned()
+            .unwrap_or_else(|| ActiveArbitragePosition {
                 symbol: symbol.to_string(),
                 binance_side: PositionSide::Long,
                 binance_qty: 0.0,
@@ -61,8 +59,7 @@ pub async fn run(
                 is_closed: false,
                 closed_at: None,
                 realized_pnl_usd: None,
-            }
-        });
+            });
 
         let prec = SymbolPrecisionInfo {
             symbol: symbol.to_string(),

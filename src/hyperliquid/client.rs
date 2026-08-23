@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone)]
 pub struct HyperliquidClient {
     private_key: String,
     signing_key: Option<k256::ecdsa::SigningKey>,
@@ -384,7 +385,8 @@ impl HyperliquidClient {
             "Gtc" // Good-Til-Cancelled
         };
 
-        let price_str = crate::strategy::precision::LotPrecisionMatcher::format_hyperliquid_price(price);
+        let price_str =
+            crate::strategy::precision::LotPrecisionMatcher::format_hyperliquid_price(price);
         let size_str = format!("{:.6}", size)
             .trim_end_matches('0')
             .trim_end_matches('.')

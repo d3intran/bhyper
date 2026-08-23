@@ -7,9 +7,7 @@ use crate::paper::wallet::PaperDualWallet;
 use crate::paper::{PaperExecutionEngine, PaperTradingStore};
 use crate::strategy::precision::LotPrecisionMatcher;
 use crate::strategy::trigger::ProfitTriggerEngine;
-use crate::types::{
-    ActiveArbitragePosition, ArbitrageOpportunity, ExecutionMode,
-};
+use crate::types::{ActiveArbitragePosition, ArbitrageOpportunity, ExecutionMode};
 use crate::web::state::AppState;
 use axum::{
     extract::{Query, State},
@@ -94,42 +92,46 @@ fn infer_precision_info(symbol: &str, mark_price: f64) -> crate::types::SymbolPr
     }
 }
 
+#[inline]
+fn sync_stores_from_disk(state: &AppState) {
+    if let Ok(p_store) = PaperTradingStore::load_or_create(None, 500.0) {
+        *state.paper_store.lock() = Some(p_store);
+    }
+    if let Ok(s_store) = crate::state::StateStore::load_or_create(None) {
+        *state.state_store.lock() = s_store;
+    }
+}
+
 /// GET /api/status - Basic health & runtime telemetry
 pub async fn get_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let now = Utc::now();
     let uptime = (now - state.start_time).num_seconds();
 
-    // Reload paper store and state store from disk to guarantee 100% sync with active daemons
-    if let Ok(p_store) = PaperTradingStore::load_or_create(None, 500.0) {
-        let mut p_lock = state.paper_store.lock();
-        *p_lock = Some(p_store);
-    }
-    if let Ok(s_store) = crate::state::StateStore::load_or_create(None) {
-        let mut s_lock = state.state_store.lock();
-        *s_lock = s_store;
-    }
+    sync_stores_from_disk(&state);
 
     let (live_count, total_realized_pnl, total_funding) = {
         let store = state.state_store.lock();
         let p_lock = state.paper_store.lock();
-        
+
         let live_pnl = store.data.total_realized_pnl_usd;
         let live_fund = store.data.total_accumulated_funding_usd;
-        
+
         if let Some(paper) = p_lock.as_ref() {
-            let paper_fund = paper.state.wallet.binance.total_funding_usd + paper.state.wallet.hyperliquid.total_funding_usd;
-            let paper_pnl = paper.state.wallet.binance.realized_pnl_usd + paper.state.wallet.hyperliquid.realized_pnl_usd;
+            let paper_fund = paper.state.wallet.binance.total_funding_usd
+                + paper.state.wallet.hyperliquid.total_funding_usd;
+            let paper_pnl = paper.state.wallet.binance.realized_pnl_usd
+                + paper.state.wallet.hyperliquid.realized_pnl_usd;
             (
                 store.get_active_positions().len(),
                 if live_pnl != 0.0 { live_pnl } else { paper_pnl },
-                if live_fund != 0.0 { live_fund } else { paper_fund },
+                if live_fund != 0.0 {
+                    live_fund
+                } else {
+                    paper_fund
+                },
             )
         } else {
-            (
-                store.get_active_positions().len(),
-                live_pnl,
-                live_fund,
-            )
+            (store.get_active_positions().len(), live_pnl, live_fund)
         }
     };
 
@@ -170,12 +172,7 @@ pub async fn get_status(State(state): State<Arc<AppState>>) -> impl IntoResponse
 /// GET /api/health - Cross-exchange margin health and rebalancing assessment
 pub async fn get_health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let cfg = state.config.load();
-
-    // Reload paper store from disk
-    if let Ok(p_store) = PaperTradingStore::load_or_create(None, 500.0) {
-        let mut p_lock = state.paper_store.lock();
-        *p_lock = Some(p_store);
-    }
+    sync_stores_from_disk(&state);
 
     // If exchange API credentials are configured, query live exchange health
     if !cfg.binance.api_key.is_empty() && !cfg.hyperliquid.wallet_address.is_empty() {
@@ -190,8 +187,10 @@ pub async fn get_health(State(state): State<Arc<AppState>>) -> impl IntoResponse
             cfg.hyperliquid.base_url.clone(),
         );
 
-        let (bn_health_res, hl_health_res) =
-            tokio::join!(bn_client.fetch_margin_health(), hl_client.fetch_margin_health());
+        let (bn_health_res, hl_health_res) = tokio::join!(
+            bn_client.fetch_margin_health(),
+            hl_client.fetch_margin_health()
+        );
 
         if let (Ok(bn_health), Ok(hl_health)) = (bn_health_res, hl_health_res) {
             let assessment = crate::state::StateStore::compute_rebalance_advisory(
@@ -241,14 +240,7 @@ pub async fn get_health(State(state): State<Arc<AppState>>) -> impl IntoResponse
 /// GET /api/positions - Real-time active arbitrage positions
 pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Reload stores from disk to ensure real-time daemon synchronization
-    if let Ok(p_store) = PaperTradingStore::load_or_create(None, 500.0) {
-        let mut p_lock = state.paper_store.lock();
-        *p_lock = Some(p_store);
-    }
-    if let Ok(s_store) = crate::state::StateStore::load_or_create(None) {
-        let mut s_lock = state.state_store.lock();
-        *s_lock = s_store;
-    }
+    sync_stores_from_disk(&state);
 
     let mut live_positions = {
         let store = state.state_store.lock();
@@ -258,19 +250,33 @@ pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoRespo
     // Update real-time mark prices and floating PnL on live positions
     for pos in &mut live_positions {
         if let Some((bn_p, hl_p)) = state.market_cache.get_latest_prices(&pos.symbol) {
-            let bn_rate = state.market_cache.get_binance_rate(&pos.symbol).unwrap_or(0.0);
-            let hl_rate = state.market_cache.get_hyperliquid_rate(&pos.symbol).unwrap_or(0.0);
+            let bn_rate = state
+                .market_cache
+                .get_binance_rate(&pos.symbol)
+                .unwrap_or(0.0);
+            let hl_rate = state
+                .market_cache
+                .get_hyperliquid_rate(&pos.symbol)
+                .unwrap_or(0.0);
             let bn_apr = bn_rate * 1095.0 * 100.0;
             let hl_apr = hl_rate * 8760.0 * 100.0;
             pos.current_spread_apr = (hl_apr - bn_apr).abs();
 
             let bn_pnl = match pos.binance_side {
-                crate::types::PositionSide::Long => (bn_p - pos.binance_entry_price) * pos.binance_qty,
-                crate::types::PositionSide::Short => (pos.binance_entry_price - bn_p) * pos.binance_qty,
+                crate::types::PositionSide::Long => {
+                    (bn_p - pos.binance_entry_price) * pos.binance_qty
+                }
+                crate::types::PositionSide::Short => {
+                    (pos.binance_entry_price - bn_p) * pos.binance_qty
+                }
             };
             let hl_pnl = match pos.hyperliquid_side {
-                crate::types::PositionSide::Long => (hl_p - pos.hyperliquid_entry_price) * pos.hyperliquid_qty,
-                crate::types::PositionSide::Short => (pos.hyperliquid_entry_price - hl_p) * pos.hyperliquid_qty,
+                crate::types::PositionSide::Long => {
+                    (hl_p - pos.hyperliquid_entry_price) * pos.hyperliquid_qty
+                }
+                crate::types::PositionSide::Short => {
+                    (pos.hyperliquid_entry_price - hl_p) * pos.hyperliquid_qty
+                }
             };
             pos.realized_pnl_usd = Some(bn_pnl + hl_pnl);
         }
@@ -280,7 +286,12 @@ pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoRespo
         let p_lock = state.paper_store.lock();
         if let Some(paper) = p_lock.as_ref() {
             (
-                paper.state.active_positions.values().cloned().collect::<Vec<PaperPosition>>(),
+                paper
+                    .state
+                    .active_positions
+                    .values()
+                    .cloned()
+                    .collect::<Vec<PaperPosition>>(),
                 Some(paper.state.wallet.clone()),
             )
         } else {
@@ -295,19 +306,33 @@ pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
     for pos in &mut paper_positions {
         if let Some((bn_p, hl_p)) = state.market_cache.get_latest_prices(&pos.symbol) {
-            let bn_rate = state.market_cache.get_binance_rate(&pos.symbol).unwrap_or(0.0);
-            let hl_rate = state.market_cache.get_hyperliquid_rate(&pos.symbol).unwrap_or(0.0);
+            let bn_rate = state
+                .market_cache
+                .get_binance_rate(&pos.symbol)
+                .unwrap_or(0.0);
+            let hl_rate = state
+                .market_cache
+                .get_hyperliquid_rate(&pos.symbol)
+                .unwrap_or(0.0);
             let bn_apr = bn_rate * 1095.0 * 100.0;
             let hl_apr = hl_rate * 8760.0 * 100.0;
             pos.current_spread_apr = (hl_apr - bn_apr).abs();
 
             let bn_pnl = match pos.binance_side {
-                crate::types::PositionSide::Long => (bn_p - pos.binance_entry_price) * pos.binance_qty,
-                crate::types::PositionSide::Short => (pos.binance_entry_price - bn_p) * pos.binance_qty,
+                crate::types::PositionSide::Long => {
+                    (bn_p - pos.binance_entry_price) * pos.binance_qty
+                }
+                crate::types::PositionSide::Short => {
+                    (pos.binance_entry_price - bn_p) * pos.binance_qty
+                }
             };
             let hl_pnl = match pos.hyperliquid_side {
-                crate::types::PositionSide::Long => (hl_p - pos.hyperliquid_entry_price) * pos.hyperliquid_qty,
-                crate::types::PositionSide::Short => (pos.hyperliquid_entry_price - hl_p) * pos.hyperliquid_qty,
+                crate::types::PositionSide::Long => {
+                    (hl_p - pos.hyperliquid_entry_price) * pos.hyperliquid_qty
+                }
+                crate::types::PositionSide::Short => {
+                    (pos.hyperliquid_entry_price - hl_p) * pos.hyperliquid_qty
+                }
             };
             pos.realized_pnl_usd = Some(bn_pnl + hl_pnl);
             total_bn_unrealized += bn_pnl;
@@ -334,10 +359,12 @@ pub async fn get_positions(State(state): State<Arc<AppState>>) -> impl IntoRespo
 /// GET /api/scan - Instant arbitrage opportunity matrix computed from zero-delay MarketDataCache
 pub async fn get_scan(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let cfg = state.config.load();
-    let cost_bps = if cfg.strategy.maker_taker_mode { 7.0 } else { 14.0 };
-    let mut opps = state
-        .market_cache
-        .compute_opportunities(cost_bps);
+    let cost_bps = if cfg.strategy.maker_taker_mode {
+        7.0
+    } else {
+        14.0
+    };
+    let mut opps = state.market_cache.compute_opportunities(cost_bps);
 
     // Fallback if cache is warming up
     if opps.is_empty() {
@@ -351,7 +378,11 @@ pub async fn get_scan(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             cfg.hyperliquid.wallet_address.clone(),
             cfg.hyperliquid.base_url.clone(),
         );
-        let scanner = crate::strategy::ArbitrageScanner::new(bn_client, hl_client, cfg.strategy.maker_taker_mode);
+        let scanner = crate::strategy::ArbitrageScanner::new(
+            bn_client,
+            hl_client,
+            cfg.strategy.maker_taker_mode,
+        );
         if let Ok(scanned) = scanner.scan_opportunities().await {
             opps = scanned;
         }
@@ -362,11 +393,20 @@ pub async fn get_scan(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .into_iter()
         .filter(|o| {
             if !cfg.strategy.symbol_whitelist.is_empty()
-                && !cfg.strategy.symbol_whitelist.iter().any(|s| s.eq_ignore_ascii_case(&o.symbol))
+                && !cfg
+                    .strategy
+                    .symbol_whitelist
+                    .iter()
+                    .any(|s| s.eq_ignore_ascii_case(&o.symbol))
             {
                 return false;
             }
-            if cfg.strategy.symbol_blacklist.iter().any(|s| s.eq_ignore_ascii_case(&o.symbol)) {
+            if cfg
+                .strategy
+                .symbol_blacklist
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(&o.symbol))
+            {
                 return false;
             }
             true
@@ -377,7 +417,7 @@ pub async fn get_scan(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         b.net_spread_apr_pct
             .partial_cmp(&a.net_spread_apr_pct)
             .unwrap_or(std::cmp::Ordering::Equal)
-        });
+    });
 
     Json(json!({
         "count": filtered_opps.len(),
@@ -432,7 +472,9 @@ pub async fn update_config(
     if new_cfg.hyperliquid.wallet_address.is_empty() {
         new_cfg.hyperliquid.wallet_address = current_cfg.hyperliquid.wallet_address.clone();
     }
-    if new_cfg.telegram.bot_token.as_deref() == Some("********") || new_cfg.telegram.bot_token.is_none() {
+    if new_cfg.telegram.bot_token.as_deref() == Some("********")
+        || new_cfg.telegram.bot_token.is_none()
+    {
         new_cfg.telegram.bot_token = current_cfg.telegram.bot_token.clone();
     }
     if new_cfg.web.auth_token.as_deref() == Some("********") || new_cfg.web.auth_token.is_none() {
@@ -478,14 +520,23 @@ pub async fn action_unwind(
         if let Some(ref mut paper) = *p_lock {
             let mut engine = PaperExecutionEngine::new(paper.clone());
             let symbols_to_close: Vec<String> = if sym_upper == "ALL" {
-                engine.store.state.active_positions.keys().cloned().collect()
+                engine
+                    .store
+                    .state
+                    .active_positions
+                    .keys()
+                    .cloned()
+                    .collect()
             } else {
                 vec![sym_upper.clone()]
             };
 
             let mut closed_count = 0;
             for sym in symbols_to_close {
-                let (bn_px, hl_px) = state.market_cache.get_latest_prices(&sym).unwrap_or((0.0, 0.0));
+                let (bn_px, hl_px) = state
+                    .market_cache
+                    .get_latest_prices(&sym)
+                    .unwrap_or((0.0, 0.0));
                 if let Ok(Some(_)) = engine.simulate_close(&sym, bn_px, hl_px, "Web API Unwind") {
                     closed_count += 1;
                 }
@@ -501,14 +552,21 @@ pub async fn action_unwind(
     let live_closed_count = {
         let mut store = state.state_store.lock();
         let symbols: Vec<String> = if sym_upper == "ALL" {
-            store.get_active_positions().into_iter().map(|p| p.symbol).collect()
+            store
+                .get_active_positions()
+                .into_iter()
+                .map(|p| p.symbol)
+                .collect()
         } else {
             vec![sym_upper.clone()]
         };
 
         let mut count = 0;
         for sym in symbols {
-            let (bn_px, hl_px) = state.market_cache.get_latest_prices(&sym).unwrap_or((0.0, 0.0));
+            let (bn_px, hl_px) = state
+                .market_cache
+                .get_latest_prices(&sym)
+                .unwrap_or((0.0, 0.0));
             if let Ok(Some(_)) = store.close_position(&sym, bn_px, hl_px, 0.0, "Web API Unwind") {
                 count += 1;
             }
@@ -550,7 +608,11 @@ pub async fn action_paper_trade(
 
     match payload.action.to_ascii_lowercase().as_str() {
         "open" => {
-            let cost_bps = if cfg.strategy.maker_taker_mode { 7.0 } else { 14.0 };
+            let cost_bps = if cfg.strategy.maker_taker_mode {
+                7.0
+            } else {
+                14.0
+            };
             let opps = state.market_cache.compute_opportunities(cost_bps);
             let opp = match opps.iter().find(|o| o.symbol == sym_upper) {
                 Some(o) => o.clone(),
@@ -565,8 +627,10 @@ pub async fn action_paper_trade(
             let notional_target = (margin * cfg.strategy.leverage).max(12.0);
             let prec = infer_precision_info(&opp.symbol, opp.hyperliquid_mark_price);
 
-            let trigger_engine = ProfitTriggerEngine::new(0.0, notional_target, cfg.strategy.maker_taker_mode);
-            let mut decision = trigger_engine.evaluate_opportunity(&opp, notional_target, true, Some(&prec));
+            let trigger_engine =
+                ProfitTriggerEngine::new(0.0, notional_target, cfg.strategy.maker_taker_mode);
+            let mut decision =
+                trigger_engine.evaluate_opportunity(&opp, notional_target, true, Some(&prec));
 
             if decision.aligned_quantity.is_none() {
                 let aligned = LotPrecisionMatcher::calculate_aligned_quantity(
@@ -594,7 +658,10 @@ pub async fn action_paper_trade(
             }
         }
         "close" => {
-            let (bn_px, hl_px) = state.market_cache.get_latest_prices(&sym_upper).unwrap_or((0.0, 0.0));
+            let (bn_px, hl_px) = state
+                .market_cache
+                .get_latest_prices(&sym_upper)
+                .unwrap_or((0.0, 0.0));
             match engine.simulate_close(&sym_upper, bn_px, hl_px, "Web API Paper Trade Close") {
                 Ok(Some(close_ev)) => {
                     *p_lock = Some(engine.store);
@@ -611,7 +678,9 @@ pub async fn action_paper_trade(
                 Err(e) => Json(json!({ "status": "error", "message": format!("{:?}", e) })),
             }
         }
-        _ => Json(json!({ "status": "error", "message": "Invalid action. Must be 'open' or 'close'" })),
+        _ => Json(
+            json!({ "status": "error", "message": "Invalid action. Must be 'open' or 'close'" }),
+        ),
     }
 }
 

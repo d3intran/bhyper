@@ -229,12 +229,7 @@ pub async fn run(
                 None => continue,
             };
 
-            let decision = trigger_engine.evaluate_opportunity(
-                opp,
-                margin_usd,
-                false,
-                Some(prec),
-            );
+            let decision = trigger_engine.evaluate_opportunity(opp, margin_usd, false, Some(prec));
 
             if decision.should_open {
                 info!(
@@ -250,11 +245,7 @@ pub async fn run(
                         break;
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "Failed to execute trade on {}: {:?}",
-                            opp.symbol,
-                            e
-                        );
+                        tracing::error!("Failed to execute trade on {}: {:?}", opp.symbol, e);
                     }
                 }
             }

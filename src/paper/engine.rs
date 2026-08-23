@@ -99,16 +99,20 @@ impl PaperTradingStore {
             let state: PaperTradingState = serde_json::from_str(&content).with_context(|| {
                 format!("Failed to parse paper state JSON from {}", path.display())
             })?;
-            info!(
+            tracing::debug!(
                 "🧪 Loaded Paper Trading State: Total Equity ${:.2}, {} active positions",
                 state.wallet.total_equity_usd(),
                 state.active_positions.len()
             );
-            Ok(Self {
+            let mut store = Self {
                 path,
                 state,
                 journal,
-            })
+            };
+            if store.state.active_positions.is_empty() {
+                let _ = store.rebalance_wallets();
+            }
+            Ok(store)
         } else {
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
@@ -152,6 +156,19 @@ impl PaperTradingStore {
         self.state.wallet = PaperDualWallet::new(initial_capital_usd);
         self.state.active_positions.clear();
         self.state.total_trades_count = 0;
+        self.save()
+    }
+
+    /// 跨所虚拟资金池自动平账再平衡 (Simulate Sub-Account Transfer / USDC Cross-Venue Rebalance)
+    pub fn rebalance_wallets(&mut self) -> Result<()> {
+        let total_cash = self.state.wallet.binance.cash_balance_usd
+            + self.state.wallet.hyperliquid.cash_balance_usd;
+        if total_cash <= 0.0 {
+            return Ok(());
+        }
+        let half = total_cash / 2.0;
+        self.state.wallet.binance.cash_balance_usd = half;
+        self.state.wallet.hyperliquid.cash_balance_usd = half;
         self.save()
     }
 }
@@ -455,6 +472,17 @@ impl PaperExecutionEngine {
             None => return Ok(None),
         };
 
+        let safe_hl_price = if live_hl_price > 0.0 {
+            live_hl_price
+        } else {
+            pos.hyperliquid_entry_price
+        };
+        let safe_bn_price = if live_bn_price > 0.0 {
+            live_bn_price
+        } else {
+            pos.binance_entry_price
+        };
+
         let notional = pos.nominal_value_usd;
         let margin_released = notional * 0.5;
 
@@ -468,16 +496,16 @@ impl PaperExecutionEngine {
         // Basis PnL
         let hl_basis_pnl = match pos.hyperliquid_side {
             PositionSide::Long => {
-                pos.hyperliquid_qty * (live_hl_price - pos.hyperliquid_entry_price)
+                pos.hyperliquid_qty * (safe_hl_price - pos.hyperliquid_entry_price)
             }
             PositionSide::Short => {
-                pos.hyperliquid_qty * (pos.hyperliquid_entry_price - live_hl_price)
+                pos.hyperliquid_qty * (pos.hyperliquid_entry_price - safe_hl_price)
             }
         };
 
         let bn_basis_pnl = match pos.binance_side {
-            PositionSide::Long => pos.binance_qty * (live_bn_price - pos.binance_entry_price),
-            PositionSide::Short => pos.binance_qty * (pos.binance_entry_price - live_bn_price),
+            PositionSide::Long => pos.binance_qty * (safe_bn_price - pos.binance_entry_price),
+            PositionSide::Short => pos.binance_qty * (pos.binance_entry_price - safe_bn_price),
         };
 
         let gross_basis_pnl_usd = hl_basis_pnl + bn_basis_pnl;
@@ -531,6 +559,9 @@ impl PaperExecutionEngine {
         let _ = self
             .journal
             .append(&JournalEntry::CloseFill(close_event.clone()));
+        if self.store.state.active_positions.is_empty() {
+            let _ = self.store.rebalance_wallets();
+        }
         self.store.save()?;
 
         info!(

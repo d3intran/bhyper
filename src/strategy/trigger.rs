@@ -281,7 +281,7 @@ impl ProfitTriggerEngine {
             secs_left >= self.sniper_window_secs.0 && secs_left <= self.sniper_window_secs.1;
         let is_valid_carry_mode = self.dual_horizon_mode
             && opp.net_spread_apr_pct >= self.min_carry_apr_pct
-            && opp.est_break_even_hours <= 3.0;
+            && (opp.est_break_even_hours <= 12.0 || opp.net_spread_apr_pct >= 50.0);
 
         let in_window = ignore_window || in_sniper_window || is_valid_carry_mode;
         if !in_window {
@@ -357,7 +357,7 @@ impl ProfitTriggerEngine {
         // Taker-Taker: HL Taker 0.035% + BN Taker 0.04% + 滑点 0.04% + 平仓摩擦 0.115% = 23 bps
         let total_friction_cost_bps = if self.maker_taker_mode { 12.0 } else { 23.0 };
 
-        // 6. 预期持仓净利润 (单期 1h 与 4h 预期)
+        // 6. 预期持仓净利润 (单期 1h 与 4h/8h 预期)
         let single_cycle_net_bps = single_cycle_income_bps - total_friction_cost_bps;
         let projected_4h_net_bps = (hl_1h_cashflow * 4.0)
             + (if is_bn_settlement {
@@ -366,11 +366,18 @@ impl ProfitTriggerEngine {
                 0.0
             })
             - total_friction_cost_bps;
+        let projected_12h_net_bps =
+            (hl_1h_cashflow * 12.0) + (bn_8h_cashflow * 1.5) - total_friction_cost_bps;
 
-        // 触发条件: 回本时间 <= 3.0h 且 (4h 预期净利 >= min_net_profit_bps 或 1h 立即净赚)
-        let is_profitable = (opp.est_break_even_hours <= 3.0
-            && projected_4h_net_bps >= self.min_net_profit_bps)
-            || single_cycle_net_bps >= self.min_net_profit_bps;
+        // 触发条件:
+        // 1) 1h 内即刻净赚 (Sniper / High Alpha, 例如 ACE 1187% APR)
+        // 2) 或 4h 预期净利达标 (回本时间 <= 6.0h, 例如 MOVE 262% APR)
+        // 3) 或 12h Carry 模式预期净利达标 (回本时间 <= 12.0h 且 年化 >= min_carry_apr, 例如 BOME 115% APR, 9h 回本)
+        let is_profitable = single_cycle_net_bps >= self.min_net_profit_bps
+            || (opp.est_break_even_hours <= 6.0 && projected_4h_net_bps >= self.min_net_profit_bps)
+            || (opp.est_break_even_hours <= 12.0
+                && opp.net_spread_apr_pct >= self.min_carry_apr_pct
+                && projected_12h_net_bps >= self.min_net_profit_bps);
 
         if !is_profitable {
             return TriggerDecision {
@@ -388,15 +395,18 @@ impl ProfitTriggerEngine {
                 is_binance_settlement_next: is_bn_settlement,
                 projected_4h_net_bps,
                 reject_reason: Some(format!(
-                    "回本耗时 {:.1}h > 3.0h 或 4h净利 {:.2} bps 低于门槛 {:.2} bps",
-                    opp.est_break_even_hours, projected_4h_net_bps, self.min_net_profit_bps
+                    "回本耗时 {:.1}h > 12.0h 或 12h净利 {:.2} bps 低于门槛 {:.2} bps",
+                    opp.est_break_even_hours, projected_12h_net_bps, self.min_net_profit_bps
                 )),
             };
         }
 
         // 6. 精确步长对齐与小资金名义价值校验 (Precision & StepSize Lock)
-        let target_usd =
-            (available_margin_usd * 0.9).clamp(self.min_notional_usd, self.max_notional_usd);
+        let target_usd = if available_margin_usd >= 10.0 {
+            available_margin_usd.clamp(self.min_notional_usd, self.max_notional_usd)
+        } else {
+            (available_margin_usd * 0.9).clamp(self.min_notional_usd, self.max_notional_usd)
+        };
 
         if let Some(prec) = precision_info {
             let aligned = LotPrecisionMatcher::calculate_aligned_quantity(

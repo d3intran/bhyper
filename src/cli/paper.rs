@@ -28,9 +28,17 @@ pub async fn run_daemon(
     let mut engine = PaperExecutionEngine::new(paper_store);
     let risk_sentinel = RiskSentinel::new(config.risk.clone());
 
+    let allocator = crate::strategy::CapitalAllocator::new(
+        config.strategy.dynamic_sizing_enabled,
+        config.strategy.liquidation_safety_buffer_pct,
+        config.strategy.leverage,
+        config.strategy.max_single_position_cap_usd,
+        config.strategy.max_active_positions,
+    );
+
     let trigger_engine = ProfitTriggerEngine::new(
         config.strategy.min_open_apr_pct / 8760.0 * 100.0,
-        config.strategy.max_position_usd_per_pair.min(margin_usd),
+        config.strategy.max_single_position_cap_usd.max(250.0),
         config.strategy.maker_taker_mode,
     )
     .with_dual_horizon(
@@ -46,6 +54,13 @@ pub async fn run_daemon(
         config.strategy.symbol_blacklist.clone(),
     );
 
+    let rotator = crate::strategy::OpportunityRotator::new(
+        config.strategy.auto_rotation_enabled,
+        config.strategy.min_swap_apr_delta_pct,
+        config.strategy.min_swap_profit_usd,
+        config.strategy.min_holding_mins_before_swap,
+    );
+
     let cache = MarketDataCache::new();
     BinanceWsStream::spawn(cache.clone());
     let hl_ws_url = if config.hyperliquid.is_testnet {
@@ -59,8 +74,8 @@ pub async fn run_daemon(
         Some(config.hyperliquid.wallet_address.clone()),
     );
 
-    info!("⏳ Warming up WebSocket feeds for Paper Trading (2s)...");
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let hl_cfg = config.hyperliquid.clone();
+    let cache_seed = cache.clone();
 
     let bn_client = BinanceFuturesClient::new(
         config.binance.api_key.clone(),
@@ -72,8 +87,126 @@ pub async fn run_daemon(
         config.hyperliquid.wallet_address.clone(),
         config.hyperliquid.base_url.clone(),
     );
-    let scanner = ArbitrageScanner::new(bn_client, hl_client, config.strategy.maker_taker_mode)
-        .with_cache(cache.clone());
+
+    info!("🌱 Performing instant initial market cache seed for 200+ symbols...");
+    if let Ok((meta, ctxs)) = hl_client.fetch_meta_and_contexts().await {
+        let mut hl_rates = Vec::with_capacity(meta.universe.len());
+        let mut ois = std::collections::HashMap::with_capacity(meta.universe.len());
+        for (u, ctx) in meta.universe.iter().zip(ctxs.iter()) {
+            let sym = u.name.to_ascii_uppercase();
+            let mark_p = ctx.mark_px.parse::<f64>().unwrap_or(0.0);
+            let oracle_p = ctx
+                .oracle_px
+                .as_deref()
+                .and_then(|p| p.parse::<f64>().ok())
+                .unwrap_or(mark_p);
+            let rate_1h = ctx.funding.parse::<f64>().unwrap_or(0.0);
+            let apr = rate_1h * 8760.0 * 100.0;
+            let oi = ctx.open_interest.parse::<f64>().unwrap_or(0.0) * mark_p;
+            ois.insert(sym.clone(), oi);
+            hl_rates.push(crate::types::FundingRateInfo {
+                symbol: sym,
+                exchange: crate::types::Exchange::Hyperliquid,
+                mark_price: mark_p,
+                index_price: oracle_p,
+                funding_rate: rate_1h,
+                funding_interval_hours: 1.0,
+                annualized_apr_pct: apr,
+                next_funding_time: Some(chrono::Utc::now()),
+            });
+        }
+        cache_seed.update_hyperliquid_rates(hl_rates);
+        cache_seed.update_metadata(
+            std::collections::HashMap::new(),
+            ois,
+            std::collections::HashMap::new(),
+        );
+        info!(
+            "✅ Initial Hyperliquid cache seeded with {} universe assets",
+            meta.universe.len()
+        );
+    }
+
+    if let Ok(vols) = bn_client.fetch_24h_volumes().await {
+        cache_seed.update_metadata(
+            vols,
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
+        );
+    }
+
+    // Spawn periodic background refresher
+    tokio::spawn(async move {
+        let hl_c =
+            HyperliquidClient::new(hl_cfg.private_key, hl_cfg.wallet_address, hl_cfg.base_url);
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
+        loop {
+            interval.tick().await;
+            if let Ok((meta, ctxs)) = hl_c.fetch_meta_and_contexts().await {
+                let mut hl_rates = Vec::with_capacity(meta.universe.len());
+                let mut ois = std::collections::HashMap::with_capacity(meta.universe.len());
+                for (u, ctx) in meta.universe.iter().zip(ctxs.iter()) {
+                    let sym = u.name.to_ascii_uppercase();
+                    let mark_p = ctx.mark_px.parse::<f64>().unwrap_or(0.0);
+                    let oracle_p = ctx
+                        .oracle_px
+                        .as_deref()
+                        .and_then(|p| p.parse::<f64>().ok())
+                        .unwrap_or(mark_p);
+                    let rate_1h = ctx.funding.parse::<f64>().unwrap_or(0.0);
+                    let apr = rate_1h * 8760.0 * 100.0;
+                    let oi = ctx.open_interest.parse::<f64>().unwrap_or(0.0) * mark_p;
+                    ois.insert(sym.clone(), oi);
+                    hl_rates.push(crate::types::FundingRateInfo {
+                        symbol: sym,
+                        exchange: crate::types::Exchange::Hyperliquid,
+                        mark_price: mark_p,
+                        index_price: oracle_p,
+                        funding_rate: rate_1h,
+                        funding_interval_hours: 1.0,
+                        annualized_apr_pct: apr,
+                        next_funding_time: Some(chrono::Utc::now()),
+                    });
+                }
+                cache_seed.update_hyperliquid_rates(hl_rates);
+                cache_seed.update_metadata(
+                    std::collections::HashMap::new(),
+                    ois,
+                    std::collections::HashMap::new(),
+                );
+            }
+        }
+    });
+
+    info!("⏳ Warming up WebSocket feeds for Paper Trading (2s)...");
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let scanner = ArbitrageScanner::new(
+        bn_client.clone(),
+        hl_client.clone(),
+        config.strategy.maker_taker_mode,
+    )
+    .with_cache(cache.clone());
+
+    info!("📊 Ingesting exchange precision rules (StepSize, TickSize, AssetIndex)...");
+    let precisions_map = scanner.fetch_symbol_precisions().await.unwrap_or_default();
+    info!(
+        "✅ Cached precision rules for {} shared cross-exchange symbols",
+        precisions_map.len()
+    );
+    let precisions_arc = std::sync::Arc::new(parking_lot::RwLock::new(precisions_map));
+
+    let precisions_bg = precisions_arc.clone();
+    let scanner_bg = scanner.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            if let Ok(updated_prec) = scanner_bg.fetch_symbol_precisions().await {
+                *precisions_bg.write() = updated_prec;
+            }
+        }
+    });
 
     info!(
         "🧪 [PAPER TRADING DAEMON] Running with ${:.2} Virtual Capital (${:.2} BN | ${:.2} HL)",
@@ -86,12 +219,7 @@ pub async fn run_daemon(
     loop {
         timer.tick().await;
 
-        let (opps_res, precisions_res) = tokio::join!(
-            scanner.scan_opportunities(),
-            scanner.fetch_symbol_precisions()
-        );
-
-        let opps = match opps_res {
+        let opps = match scanner.scan_opportunities().await {
             Ok(o) => o,
             Err(e) => {
                 tracing::error!("Error scanning opportunities in paper mode: {:?}", e);
@@ -99,7 +227,7 @@ pub async fn run_daemon(
             }
         };
 
-        let precisions = precisions_res.unwrap_or_default();
+        let precisions = precisions_arc.read();
         let opps_map: std::collections::HashMap<String, &crate::types::ArbitrageOpportunity> =
             opps.iter().map(|o| (o.symbol.clone(), o)).collect();
 
@@ -153,7 +281,96 @@ pub async fn run_daemon(
             }
         }
 
-        // 3. New Arbitrage Opportunity Evaluation
+        // 3. 全局机会成本动态换仓 (Dynamic Opportunity Cost Swap)
+        if config.strategy.auto_rotation_enabled {
+            let active_vec: Vec<crate::types::ActiveArbitragePosition> = engine
+                .store
+                .state
+                .active_positions
+                .values()
+                .map(|p| p.to_active_position())
+                .collect();
+
+            if let Some(swap) = rotator.evaluate_swaps(&active_vec, &opps, &opps_map) {
+                if let Some(prec) = precisions.get(&swap.candidate_symbol) {
+                    let bn_eq = engine.store.state.wallet.binance.total_equity_usd();
+                    let hl_eq = engine.store.state.wallet.hyperliquid.total_equity_usd();
+                    let active_notional: f64 = engine
+                        .store
+                        .state
+                        .active_positions
+                        .values()
+                        .map(|p| p.nominal_value_usd)
+                        .sum();
+                    let active_cnt = engine.store.state.active_positions.len();
+                    let unwind_notional = engine
+                        .store
+                        .state
+                        .active_positions
+                        .get(&swap.unwind_symbol)
+                        .map(|p| p.nominal_value_usd)
+                        .unwrap_or(0.0);
+
+                    let alloc_d = allocator.calculate_slot_allocation(
+                        bn_eq,
+                        hl_eq,
+                        (active_notional - unwind_notional).max(0.0),
+                        active_cnt.saturating_sub(1),
+                        Some(&swap.candidate_opp),
+                    );
+                    let target_notional = if alloc_d.is_safe {
+                        alloc_d.target_notional_usd
+                    } else {
+                        margin_usd
+                    };
+
+                    let decision = trigger_engine.evaluate_opportunity(
+                        &swap.candidate_opp,
+                        target_notional,
+                        true,
+                        Some(prec),
+                    );
+
+                    if decision.should_open {
+                        info!(
+                            "🔄 [OPPORTUNITY SWAP] Rotating capital: Close {} ({:.1}% APR) -> Open {} ({:.1}% APR), Projected Net Gain: +${:.4}",
+                            swap.unwind_symbol, swap.unwind_current_apr, swap.candidate_symbol, swap.candidate_opp.net_spread_apr_pct, swap.est_switching_gain_usd
+                        );
+
+                        let (live_bn_px, live_hl_px) = cache
+                            .get_latest_prices(&swap.unwind_symbol)
+                            .unwrap_or((0.0, 0.0));
+
+                        let _ = engine.simulate_close(
+                            &swap.unwind_symbol,
+                            live_bn_px,
+                            live_hl_px,
+                            &swap.rationale,
+                        );
+
+                        if let Err(e) = engine.simulate_open(
+                            &swap.candidate_opp,
+                            &decision,
+                            prec,
+                            execution_mode,
+                        ) {
+                            warn!(
+                                "Failed to simulate swap open on {}: {:?}",
+                                swap.candidate_symbol, e
+                            );
+                        }
+                    } else if let Some(ref reason) = decision.reject_reason {
+                        tracing::debug!(
+                            "Swap candidate {} rejected by trigger: {}",
+                            swap.candidate_symbol,
+                            reason
+                        );
+                    }
+                }
+            }
+        }
+
+        // 3.5 新套利标的开仓评估 (New Opportunity Evaluation)
         let current_active_count = engine.store.state.active_positions.len();
         if current_active_count < config.strategy.max_active_positions {
             let held_symbols: std::collections::HashSet<String> = engine
@@ -164,13 +381,25 @@ pub async fn run_daemon(
                 .cloned()
                 .collect();
 
+            let bn_eq = engine.store.state.wallet.binance.total_equity_usd();
+            let hl_eq = engine.store.state.wallet.hyperliquid.total_equity_usd();
+            let active_notional: f64 = engine
+                .store
+                .state
+                .active_positions
+                .values()
+                .map(|p| p.nominal_value_usd)
+                .sum();
+
             let mut sorted_opps = opps.clone();
             sorted_opps.sort_by(|a, b| {
                 let score_a = (a.net_spread_apr_pct / a.bid_ask_spread_bps.max(1.0))
                     * ((a.binance_volume_24h_usd + 1.0).ln());
                 let score_b = (b.net_spread_apr_pct / b.bid_ask_spread_bps.max(1.0))
                     * ((b.binance_volume_24h_usd + 1.0).ln());
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             for opp in &sorted_opps {
@@ -183,22 +412,29 @@ pub async fn run_daemon(
                     None => continue,
                 };
 
-                let decision = trigger_engine.evaluate_opportunity(
-                    opp,
-                    margin_usd,
-                    false,
-                    Some(prec),
+                let alloc_d = allocator.calculate_slot_allocation(
+                    bn_eq,
+                    hl_eq,
+                    active_notional,
+                    current_active_count,
+                    Some(opp),
                 );
+
+                if !alloc_d.is_safe {
+                    continue;
+                }
+
+                let target_notional = alloc_d.target_notional_usd;
+                let decision =
+                    trigger_engine.evaluate_opportunity(opp, target_notional, false, Some(prec));
 
                 if decision.should_open {
                     info!(
-                        "🎯 [PAPER TRIGGER HIT] Validated arbitrage opportunity on {}: Net APR {:.2}%, Est Profit: ${:.4}",
-                        opp.symbol, opp.net_spread_apr_pct, decision.net_expected_profit_usd
+                        "🎯 [PAPER TRIGGER HIT] Validated arbitrage on {}: Net APR {:.2}%, Dynamic Target: ${:.2} (Lev {:.2}x), Est Profit: ${:.4}",
+                        opp.symbol, opp.net_spread_apr_pct, target_notional, alloc_d.effective_leverage, decision.net_expected_profit_usd
                     );
 
-                    if let Err(e) =
-                        engine.simulate_open(opp, &decision, prec, execution_mode)
-                    {
+                    if let Err(e) = engine.simulate_open(opp, &decision, prec, execution_mode) {
                         warn!("Failed to simulate open on {}: {:?}", opp.symbol, e);
                     }
                     break;
@@ -212,13 +448,33 @@ pub async fn run_daemon(
         let funding_inc = engine.store.state.wallet.total_funding_income_usd();
         let fees_paid = engine.store.state.wallet.total_fees_paid_usd();
         let active_count = engine.store.state.active_positions.len();
+        let active_notional: f64 = engine
+            .store
+            .state
+            .active_positions
+            .values()
+            .map(|p| p.nominal_value_usd)
+            .sum();
+        let effective_lev = if total_eq > 0.0 {
+            active_notional / total_eq
+        } else {
+            0.0
+        };
+        let cap_util_pct = if total_eq > 0.0 {
+            (active_notional / total_eq) * 100.0
+        } else {
+            0.0
+        };
 
         println!(
-            "🧪 [PAPER TRADING] Equity: ${:.2} (BN: ${:.2} | HL: ${:.2}) | Positions: {} | Realized PnL: ${:.4} | Funding: +${:.4} | Fees: -${:.4}",
+            "🧪 [PAPER TRADING] Equity: ${:.2} (BN: ${:.2} | HL: ${:.2}) | Positions: {} (Notional: ${:.1}, Lev: {:.2}x, Util: {:.1}%) | Realized PnL: ${:.4} | Funding: +${:.4} | Fees: -${:.4}",
             total_eq,
             engine.store.state.wallet.binance.total_equity_usd(),
             engine.store.state.wallet.hyperliquid.total_equity_usd(),
             active_count,
+            active_notional,
+            effective_lev,
+            cap_util_pct,
             realized_pnl,
             funding_inc,
             fees_paid
@@ -236,12 +492,7 @@ pub fn run_reset(initial_capital: f64) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_trade(
-    config: &Config,
-    symbol: &str,
-    margin_usd: f64,
-    action: &str,
-) -> Result<()> {
+pub async fn run_trade(config: &Config, symbol: &str, margin_usd: f64, action: &str) -> Result<()> {
     let sym_upper = symbol.to_ascii_uppercase();
     let paper_store = paper::PaperTradingStore::load_or_create(None, 100.0)?;
     let mut engine = paper::PaperExecutionEngine::new(paper_store);
@@ -290,26 +541,12 @@ pub async fn run_trade(
                 }
             };
 
-            let trigger_engine = ProfitTriggerEngine::new(
-                0.0,
-                margin_usd,
-                config.strategy.maker_taker_mode,
-            )
-            .with_liquidity_guards(
-                0.0,
-                0.0,
-                100.0,
-                100.0,
-                vec![],
-                vec![],
-            );
+            let trigger_engine =
+                ProfitTriggerEngine::new(0.0, margin_usd, config.strategy.maker_taker_mode)
+                    .with_liquidity_guards(0.0, 0.0, 100.0, 100.0, vec![], vec![]);
 
-            let mut decision = trigger_engine.evaluate_opportunity(
-                opp,
-                margin_usd,
-                true,
-                Some(prec),
-            );
+            let mut decision =
+                trigger_engine.evaluate_opportunity(opp, margin_usd, true, Some(prec));
 
             if decision.aligned_quantity.is_none() {
                 let aligned = LotPrecisionMatcher::calculate_aligned_quantity(
@@ -371,15 +608,14 @@ pub async fn run_trade(
 
             println!("🔍 Fetching live exit market price for {}...", sym_upper);
             let opps = scanner.scan_opportunities().await?;
-            let (live_bn_px, live_hl_px) = if let Some(opp) =
-                opps.iter().find(|o| o.symbol == sym_upper)
-            {
-                (opp.binance_mark_price, opp.hyperliquid_mark_price)
-            } else if let Some(pos) = engine.store.state.active_positions.get(&sym_upper) {
-                (pos.binance_entry_price, pos.hyperliquid_entry_price)
-            } else {
-                (0.0, 0.0)
-            };
+            let (live_bn_px, live_hl_px) =
+                if let Some(opp) = opps.iter().find(|o| o.symbol == sym_upper) {
+                    (opp.binance_mark_price, opp.hyperliquid_mark_price)
+                } else if let Some(pos) = engine.store.state.active_positions.get(&sym_upper) {
+                    (pos.binance_entry_price, pos.hyperliquid_entry_price)
+                } else {
+                    (0.0, 0.0)
+                };
 
             println!("\n{}", "=".repeat(100));
             println!(

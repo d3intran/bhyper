@@ -43,10 +43,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     // 1. Send initial handshake packet
     let cfg = state.config.load();
-    let cost_bps = if cfg.strategy.maker_taker_mode { 7.0 } else { 14.0 };
-    let opps = state
-        .market_cache
-        .compute_opportunities(cost_bps);
+    let cost_bps = if cfg.strategy.maker_taker_mode {
+        7.0
+    } else {
+        14.0
+    };
+    let opps = state.market_cache.compute_opportunities(cost_bps);
 
     let initial_packet = json!({
         "type": "INIT",

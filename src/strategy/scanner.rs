@@ -7,6 +7,7 @@ use chrono::{Timelike, Utc};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct ArbitrageScanner {
     binance: BinanceFuturesClient,
     hyperliquid: HyperliquidClient,
@@ -64,11 +65,9 @@ impl ArbitrageScanner {
     /// 扫描套利机会：优先从高频 WebSocket 内存缓存计算，降级从 REST 并发拉取
     pub async fn scan_opportunities(&self) -> Result<Vec<ArbitrageOpportunity>> {
         if let Some(ref cache) = self.cache {
-            if cache.is_healthy() {
-                let cached_opps = cache.compute_opportunities(self.roundtrip_cost_bps);
-                if !cached_opps.is_empty() {
-                    return Ok(cached_opps);
-                }
+            let cached_opps = cache.compute_opportunities(self.roundtrip_cost_bps);
+            if !cached_opps.is_empty() {
+                return Ok(cached_opps);
             }
         }
 

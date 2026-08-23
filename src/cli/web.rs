@@ -86,12 +86,23 @@ pub async fn run(
                 });
             }
             cache_seed.update_hyperliquid_rates(hl_rates);
-            cache_seed.update_metadata(std::collections::HashMap::new(), ois, std::collections::HashMap::new());
-            info!("🌱 Seeded Hyperliquid cache with {} universe assets", meta.universe.len());
+            cache_seed.update_metadata(
+                std::collections::HashMap::new(),
+                ois,
+                std::collections::HashMap::new(),
+            );
+            info!(
+                "🌱 Seeded Hyperliquid cache with {} universe assets",
+                meta.universe.len()
+            );
         }
 
         if let Ok(vols) = bn_client.fetch_24h_volumes().await {
-            cache_seed.update_metadata(vols, std::collections::HashMap::new(), std::collections::HashMap::new());
+            cache_seed.update_metadata(
+                vols,
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+            );
         }
 
         // 2. Periodic background refresher (every 3 seconds) to ensure real-time accuracy across all symbols
@@ -125,7 +136,11 @@ pub async fn run(
                     });
                 }
                 cache_seed.update_hyperliquid_rates(hl_rates);
-                cache_seed.update_metadata(std::collections::HashMap::new(), ois, std::collections::HashMap::new());
+                cache_seed.update_metadata(
+                    std::collections::HashMap::new(),
+                    ois,
+                    std::collections::HashMap::new(),
+                );
             }
         }
     });

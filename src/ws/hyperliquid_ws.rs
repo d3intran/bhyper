@@ -125,10 +125,7 @@ impl HyperliquidWsStream {
                                         user_fills_sub.to_string(),
                                     ))
                                     .await;
-                                info!(
-                                    "Subscribed to Hyperliquid userFills for {}",
-                                    addr
-                                );
+                                info!("Subscribed to Hyperliquid userFills for {}", addr);
                             }
                         }
 

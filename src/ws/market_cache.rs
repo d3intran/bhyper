@@ -164,12 +164,28 @@ impl MarketDataCache {
     /// Get latest mark prices for a symbol (Binance, Hyperliquid)
     pub fn get_latest_prices(&self, symbol: &str) -> Option<(f64, f64)> {
         let sym_upper = symbol.to_ascii_uppercase();
+        let bn_sym = if sym_upper.ends_with("USDT") {
+            sym_upper.clone()
+        } else {
+            format!("{}USDT", sym_upper)
+        };
+        let hl_sym = sym_upper
+            .strip_suffix("USDT")
+            .unwrap_or(&sym_upper)
+            .to_string();
+
         let inner = self.inner.read();
-        let bn_p = inner.binance_rates.get(&sym_upper).map(|r| r.mark_price)?;
+        let bn_p = inner
+            .binance_rates
+            .get(&sym_upper)
+            .or_else(|| inner.binance_rates.get(&bn_sym))
+            .map(|r| r.mark_price)?;
         let hl_p = inner
             .hyperliquid_rates
-            .get(&sym_upper)
+            .get(&hl_sym)
+            .or_else(|| inner.hyperliquid_rates.get(&sym_upper))
             .map(|r| r.mark_price)?;
+
         if bn_p > 0.0 && hl_p > 0.0 {
             Some((bn_p, hl_p))
         } else {
@@ -180,13 +196,32 @@ impl MarketDataCache {
     /// Get latest Binance funding rate
     pub fn get_binance_rate(&self, symbol: &str) -> Option<f64> {
         let sym_upper = symbol.to_ascii_uppercase();
-        self.inner.read().binance_rates.get(&sym_upper).map(|r| r.funding_rate)
+        let bn_sym = if sym_upper.ends_with("USDT") {
+            sym_upper.clone()
+        } else {
+            format!("{}USDT", sym_upper)
+        };
+        let inner = self.inner.read();
+        inner
+            .binance_rates
+            .get(&sym_upper)
+            .or_else(|| inner.binance_rates.get(&bn_sym))
+            .map(|r| r.funding_rate)
     }
 
     /// Get latest Hyperliquid funding rate
     pub fn get_hyperliquid_rate(&self, symbol: &str) -> Option<f64> {
         let sym_upper = symbol.to_ascii_uppercase();
-        self.inner.read().hyperliquid_rates.get(&sym_upper).map(|r| r.funding_rate)
+        let hl_sym = sym_upper
+            .strip_suffix("USDT")
+            .unwrap_or(&sym_upper)
+            .to_string();
+        let inner = self.inner.read();
+        inner
+            .hyperliquid_rates
+            .get(&hl_sym)
+            .or_else(|| inner.hyperliquid_rates.get(&sym_upper))
+            .map(|r| r.funding_rate)
     }
 
     /// Get latest opportunity for a specific symbol directly from in-memory cache

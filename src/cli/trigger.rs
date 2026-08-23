@@ -94,7 +94,11 @@ pub async fn run(config: &Config, margin_usd: f64, ignore_window: bool) -> Resul
     println!(
         "⏱️  Seconds to next hourly settlement: {}s | Next hour is Binance 8h settlement: {}",
         secs_left,
-        if is_bn { "✅ YES" } else { "❌ NO (HL 1h only)" }
+        if is_bn {
+            "✅ YES"
+        } else {
+            "❌ NO (HL 1h only)"
+        }
     );
     println!("📊 Actionable Triggers: {} / 20 evaluated.\n", passed_count);
 

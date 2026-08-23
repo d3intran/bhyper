@@ -873,19 +873,52 @@ fn test_hyperliquid_5_sig_figs_price_formatting() {
     use bhyper::strategy::LotPrecisionMatcher;
 
     // Prices with various scales obeying 5 sig-figs & max 6 decimals
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(1234.56), "1234.6");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(123.456), "123.46");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(12.3456), "12.346");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(1.23456), "1.2346");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(0.123456), "0.12346");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(0.0123456), "0.012346");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(65432.1), "65432");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_price(105432.0), "105432");
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(1234.56),
+        "1234.6"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(123.456),
+        "123.46"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(12.3456),
+        "12.346"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(1.23456),
+        "1.2346"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(0.123456),
+        "0.12346"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(0.0123456),
+        "0.012346"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(65432.1),
+        "65432"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_price(105432.0),
+        "105432"
+    );
 
     // Size formatting adhering strictly to sz_decimals
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(1.23456, 2), "1.23");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(1.23456, 4), "1.2345");
-    assert_eq!(LotPrecisionMatcher::format_hyperliquid_size(10.000, 1), "10");
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_size(1.23456, 2),
+        "1.23"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_size(1.23456, 4),
+        "1.2345"
+    );
+    assert_eq!(
+        LotPrecisionMatcher::format_hyperliquid_size(10.000, 1),
+        "10"
+    );
 }
 
 #[test]

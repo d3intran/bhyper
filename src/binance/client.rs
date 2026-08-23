@@ -1,11 +1,12 @@
 use crate::types::{Exchange, FundingRateInfo, PositionSide, SymbolPrecisionInfo};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{TimeZone, Utc};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone)]
 #[allow(dead_code)]
 pub struct BinanceFuturesClient {
     api_key: String,
@@ -242,6 +243,12 @@ impl BinanceFuturesClient {
             .send()
             .await
             .context("Failed to request Binance premiumIndex")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Binance premiumIndex HTTP error {}: {}", status, body);
+        }
 
         let items: Vec<PremiumIndexItem> = resp
             .json()

@@ -272,12 +272,13 @@ impl RiskSentinel {
 
             if current_effective_apr < self.config.min_exit_apr_pct {
                 // 保本持仓锁 (Fee-Amortization Lock):
-                // 若累计实收资金费尚不足以覆盖退出手续费 (净收益 < 0)，且未严重倒挂、未超最大持仓时长，
-                // 则拒绝因单纯 APR 回落而割肉平仓，继续持有等待整点结算摊薄摩擦！
+                // 若累计实收资金费尚不足以覆盖退出手续费 (净收益 < 0)，且未严重倒挂、且持仓未超过 4 小时且未收取任何资金费，
+                // 则保持持仓等待结算；但如果已收取资金费或者持仓已超过 4 小时，则立即衰减平仓释放资金！
                 if self.config.fee_amortization_lock
                     && total_realizable_net_bps < 0.0
                     && current_effective_apr >= -5.0
-                    && holding_hours < self.config.max_holding_hours
+                    && holding_hours < 4.0
+                    && pos.accumulated_funding_usd <= 0.0
                 {
                     // 保持持仓，不触发衰减退出
                 } else {

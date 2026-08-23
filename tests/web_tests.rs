@@ -113,7 +113,10 @@ async fn test_web_embedded_static_index_html() {
         .unwrap();
     let res_css = app.clone().oneshot(req_css).await.unwrap();
     assert_eq!(res_css.status(), StatusCode::OK);
-    assert_eq!(res_css.headers().get("content-type").unwrap(), "text/css; charset=utf-8");
+    assert_eq!(
+        res_css.headers().get("content-type").unwrap(),
+        "text/css; charset=utf-8"
+    );
 
     // Test JS route
     let req_js = Request::builder()
@@ -123,7 +126,10 @@ async fn test_web_embedded_static_index_html() {
         .unwrap();
     let res_js = app.oneshot(req_js).await.unwrap();
     assert_eq!(res_js.status(), StatusCode::OK);
-    assert_eq!(res_js.headers().get("content-type").unwrap(), "application/javascript; charset=utf-8");
+    assert_eq!(
+        res_js.headers().get("content-type").unwrap(),
+        "application/javascript; charset=utf-8"
+    );
 }
 
 #[tokio::test]
@@ -215,11 +221,9 @@ async fn test_telegram_mini_app_hmac_verification() {
     let chat_id: i64 = 1122334455;
 
     let now_ts = Utc::now().timestamp();
-    let user_json = format!(
-        "{{\"id\":{},\"first_name\":\"Trader\",\"username\":\"bhyper_quant\"}}",
-        chat_id
-    );
-    let query_data = format!("auth_date={}&query_id=AAGH&user={}", now_ts, user_json);
+    let user_json =
+        format!("{{\"id\":{chat_id},\"first_name\":\"Trader\",\"username\":\"bhyper_quant\"}}");
+    let query_data = format!("auth_date={now_ts}&query_id=AAGH&user={user_json}");
 
     // 1. Calculate HMAC secret_key = HMAC_SHA256("WebAppData", bot_token)
     let mut mac_secret = HmacSha256::new_from_slice(b"WebAppData").unwrap();
@@ -227,12 +231,12 @@ async fn test_telegram_mini_app_hmac_verification() {
     let secret_key = mac_secret.finalize().into_bytes();
 
     // 2. Data check string
-    let check_str = format!("auth_date={}\nquery_id=AAGH\nuser={}", now_ts, user_json);
+    let check_str = format!("auth_date={now_ts}\nquery_id=AAGH\nuser={user_json}");
     let mut mac_data = HmacSha256::new_from_slice(&secret_key).unwrap();
     mac_data.update(check_str.as_bytes());
     let valid_hash = hex::encode(mac_data.finalize().into_bytes());
 
-    let full_init_data = format!("{}&hash={}", query_data, valid_hash);
+    let full_init_data = format!("{query_data}&hash={valid_hash}");
 
     // Test successful verification
     let res = verify_telegram_init_data(&full_init_data, bot_token, Some(chat_id));
@@ -242,7 +246,7 @@ async fn test_telegram_mini_app_hmac_verification() {
     assert_eq!(identity.auth_type, "telegram");
 
     // Test tampered hash rejection
-    let tampered_init_data = format!("{}&hash=badhash1234567890abcdef", query_data);
+    let tampered_init_data = format!("{query_data}&hash=badhash1234567890abcdef");
     let res_tampered = verify_telegram_init_data(&tampered_init_data, bot_token, Some(chat_id));
     assert!(res_tampered.is_err());
 
@@ -350,9 +354,10 @@ async fn test_web_journal_health_and_paper_trade_actions() {
         .uri("/api/action/unwind")
         .method("POST")
         .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&serde_json::json!({ "symbol": "ALL" })).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&serde_json::json!({ "symbol": "ALL" })).unwrap(),
+        ))
         .unwrap();
     let res_unwind = app.oneshot(req_unwind).await.unwrap();
     assert_eq!(res_unwind.status(), StatusCode::OK);
 }
-

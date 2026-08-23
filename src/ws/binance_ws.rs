@@ -8,15 +8,15 @@ use tokio_tungstenite::connect_async;
 use tracing::{error, info, warn};
 
 #[derive(Deserialize, Debug)]
-struct BinanceWsMarkPriceItem<'a> {
-    #[serde(rename = "s", default, borrow)]
-    symbol: Option<&'a str>,
-    #[serde(rename = "p", default, borrow)]
-    mark_price: Option<&'a str>,
-    #[serde(rename = "i", default, borrow)]
-    index_price: Option<&'a str>,
-    #[serde(rename = "r", default, borrow)]
-    funding_rate: Option<&'a str>,
+struct BinanceWsMarkPriceItem {
+    #[serde(rename = "s", default)]
+    symbol: Option<String>,
+    #[serde(rename = "p", default)]
+    mark_price: Option<String>,
+    #[serde(rename = "i", default)]
+    index_price: Option<String>,
+    #[serde(rename = "r", default)]
+    funding_rate: Option<String>,
     #[serde(rename = "T", default)]
     next_funding_time: Option<i64>,
 }
@@ -38,9 +38,28 @@ impl BinanceWsStream {
                         while let Some(msg_res) = ws_stream.next().await {
                             match msg_res {
                                 Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
-                                    if let Ok(items) =
+                                    let items_opt = if let Ok(items) =
                                         serde_json::from_str::<Vec<BinanceWsMarkPriceItem>>(&text)
                                     {
+                                        Some(items)
+                                    } else if let Ok(val) =
+                                        serde_json::from_str::<serde_json::Value>(&text)
+                                    {
+                                        if let Some(arr) =
+                                            val.get("data").and_then(|d| d.as_array())
+                                        {
+                                            serde_json::from_value::<Vec<BinanceWsMarkPriceItem>>(
+                                                serde_json::Value::Array(arr.clone()),
+                                            )
+                                            .ok()
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    };
+
+                                    if let Some(items) = items_opt {
                                         let mut rates = Vec::with_capacity(items.len());
                                         for item in items {
                                             let full_sym = match item.symbol {

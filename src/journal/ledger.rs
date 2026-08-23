@@ -242,8 +242,7 @@ impl TradeJournal {
                 let matches = match e {
                     JournalEntry::Intent(_) => etype.eq_ignore_ascii_case("INTENT"),
                     JournalEntry::OpenFill(_) => {
-                        etype.eq_ignore_ascii_case("OPEN")
-                            || etype.eq_ignore_ascii_case("OPENFILL")
+                        etype.eq_ignore_ascii_case("OPEN") || etype.eq_ignore_ascii_case("OPENFILL")
                     }
                     JournalEntry::Funding(_) => etype.eq_ignore_ascii_case("FUNDING"),
                     JournalEntry::RiskAlert(_) => {

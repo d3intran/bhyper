@@ -58,7 +58,7 @@ impl StateStore {
             }
             let data: PersistentStateData = serde_json::from_str(&content)
                 .with_context(|| format!("Failed to parse state JSON at {}", path.display()))?;
-            info!(
+            tracing::debug!(
                 "📂 Loaded state store: {} active positions, {} trade history records from {}",
                 data.active_positions.len(),
                 data.trade_history.len(),

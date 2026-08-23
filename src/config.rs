@@ -115,6 +115,29 @@ pub struct StrategyConfig {
     pub symbol_blacklist: Vec<String>,
     #[serde(default = "default_true")]
     pub use_binance_ws_api: bool,
+    #[serde(default = "default_true")]
+    pub auto_rotation_enabled: bool,
+    #[serde(default = "default_min_swap_apr_delta")]
+    pub min_swap_apr_delta_pct: f64,
+    #[serde(default = "default_min_swap_profit_usd")]
+    pub min_swap_profit_usd: f64,
+    #[serde(default = "default_min_holding_mins_before_swap")]
+    pub min_holding_mins_before_swap: f64,
+    #[serde(default = "default_true")]
+    pub dynamic_sizing_enabled: bool,
+    #[serde(default = "default_liquidation_safety_buffer_pct")]
+    pub liquidation_safety_buffer_pct: f64,
+    #[serde(default = "default_max_single_pos_cap")]
+    pub max_single_position_cap_usd: f64,
+    #[serde(default = "default_true")]
+    pub alpha_concentration_boost: bool,
+}
+
+fn default_liquidation_safety_buffer_pct() -> f64 {
+    15.0
+}
+fn default_max_single_pos_cap() -> f64 {
+    200.0
 }
 
 fn default_symbols() -> Vec<String> {
@@ -179,6 +202,15 @@ fn default_max_spread_bps() -> f64 {
 fn default_max_divergence_pct() -> f64 {
     0.5
 }
+fn default_min_swap_apr_delta() -> f64 {
+    25.0
+}
+fn default_min_swap_profit_usd() -> f64 {
+    0.04
+}
+fn default_min_holding_mins_before_swap() -> f64 {
+    15.0
+}
 
 impl Default for StrategyConfig {
     fn default() -> Self {
@@ -205,6 +237,14 @@ impl Default for StrategyConfig {
             symbol_whitelist: Vec::new(),
             symbol_blacklist: vec!["USTC".into(), "LUNC".into()],
             use_binance_ws_api: default_true(),
+            auto_rotation_enabled: default_true(),
+            min_swap_apr_delta_pct: default_min_swap_apr_delta(),
+            min_swap_profit_usd: default_min_swap_profit_usd(),
+            min_holding_mins_before_swap: default_min_holding_mins_before_swap(),
+            dynamic_sizing_enabled: default_true(),
+            liquidation_safety_buffer_pct: default_liquidation_safety_buffer_pct(),
+            max_single_position_cap_usd: default_max_single_pos_cap(),
+            alpha_concentration_boost: default_true(),
         }
     }
 }
@@ -351,14 +391,16 @@ impl Config {
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let toml_str = toml::to_string_pretty(self)
-            .context("Failed to serialize config to TOML")?;
+        let toml_str =
+            toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
 
         let tmp_path = p.with_extension("tmp");
-        std::fs::write(&tmp_path, toml_str)
-            .with_context(|| format!("Failed to write temporary config to {}", tmp_path.display()))?;
-        std::fs::rename(&tmp_path, p)
-            .with_context(|| format!("Failed to rename {} to {}", tmp_path.display(), p.display()))?;
+        std::fs::write(&tmp_path, toml_str).with_context(|| {
+            format!("Failed to write temporary config to {}", tmp_path.display())
+        })?;
+        std::fs::rename(&tmp_path, p).with_context(|| {
+            format!("Failed to rename {} to {}", tmp_path.display(), p.display())
+        })?;
         Ok(())
     }
 

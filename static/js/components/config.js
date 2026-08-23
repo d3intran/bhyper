@@ -32,6 +32,19 @@ export function populateConfigFields(cfg) {
   setVal('cfg-stop-loss-bps', s.stop_loss_basis_bps);
   setVal('cfg-take-profit-bps', s.take_profit_basis_bps);
   setVal('cfg-max-holding-hours', s.max_holding_hours);
+
+  const elRot = document.getElementById('cfg-auto-rotation');
+  if (elRot && s.auto_rotation_enabled !== undefined) {
+    elRot.checked = s.auto_rotation_enabled;
+  }
+  const elDyn = document.getElementById('cfg-dynamic-sizing');
+  if (elDyn && s.dynamic_sizing_enabled !== undefined) {
+    elDyn.checked = s.dynamic_sizing_enabled;
+  }
+  setVal('cfg-safety-buffer', s.liquidation_safety_buffer_pct);
+  setVal('cfg-min-swap-apr', s.min_swap_apr_delta_pct);
+  setVal('cfg-min-swap-profit', s.min_swap_profit_usd);
+  setVal('cfg-min-holding-mins', s.min_holding_mins_before_swap);
 }
 
 export async function saveCurrentConfig(currentConfig) {
@@ -46,16 +59,28 @@ export async function saveCurrentConfig(currentConfig) {
     const el = document.getElementById(id);
     return el && el.value !== '' ? parseInt(el.value, 10) : fallback;
   };
+  const getBool = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el ? el.checked : fallback;
+  };
 
   updated.strategy.min_open_apr_pct = getNum('cfg-min-open-apr', updated.strategy.min_open_apr_pct);
   updated.strategy.min_carry_apr_pct = getNum('cfg-min-carry-apr', updated.strategy.min_carry_apr_pct);
   updated.strategy.min_exit_apr_pct = getNum('cfg-min-exit-apr', updated.strategy.min_exit_apr_pct);
   updated.strategy.max_position_usd_per_pair = getNum('cfg-max-pos-usd', updated.strategy.max_position_usd_per_pair);
+  updated.strategy.max_single_position_cap_usd = getNum('cfg-max-pos-usd', updated.strategy.max_single_position_cap_usd ?? 200.0);
+  updated.strategy.liquidation_safety_buffer_pct = getNum('cfg-safety-buffer', updated.strategy.liquidation_safety_buffer_pct ?? 15.0);
+  updated.strategy.dynamic_sizing_enabled = getBool('cfg-dynamic-sizing', updated.strategy.dynamic_sizing_enabled ?? true);
   updated.strategy.max_active_positions = getInt('cfg-max-active-pos', updated.strategy.max_active_positions);
   updated.strategy.leverage = getNum('cfg-leverage', updated.strategy.leverage);
   updated.strategy.stop_loss_basis_bps = getNum('cfg-stop-loss-bps', updated.strategy.stop_loss_basis_bps);
   updated.strategy.take_profit_basis_bps = getNum('cfg-take-profit-bps', updated.strategy.take_profit_basis_bps);
   updated.strategy.max_holding_hours = getNum('cfg-max-holding-hours', updated.strategy.max_holding_hours);
+
+  updated.strategy.auto_rotation_enabled = getBool('cfg-auto-rotation', updated.strategy.auto_rotation_enabled ?? true);
+  updated.strategy.min_swap_apr_delta_pct = getNum('cfg-min-swap-apr', updated.strategy.min_swap_apr_delta_pct ?? 25.0);
+  updated.strategy.min_swap_profit_usd = getNum('cfg-min-swap-profit', updated.strategy.min_swap_profit_usd ?? 0.04);
+  updated.strategy.min_holding_mins_before_swap = getNum('cfg-min-holding-mins', updated.strategy.min_holding_mins_before_swap ?? 15.0);
 
   try {
     const res = await apiFetch('/api/config', {

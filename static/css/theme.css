@@ -1,92 +1,141 @@
 /* ========================================================================= */
-/* BHyper Impeccable Design Tokens (Quieter, Minimal & Focused FinTech)      */
+/* BHyper Impeccable Design System — Institutional Quantitative Terminal     */
+/* Mode: Operate (Ultra-clean, modern, restrained, high-contrast, comfortable) */
 /* ========================================================================= */
 
 :root {
+  /* Canvas & Neutral Surface Layers (Light Mode) */
   --bg-canvas: #f8fafc;
   --bg-surface: #ffffff;
   --bg-elevated: #f1f5f9;
-  --bg-subtle: #f8fafc;
+  --bg-hover: #e2e8f0;
+  --bg-active: #cbd5e1;
+
+  /* Borders & Dividers */
   --border-subtle: #e2e8f0;
   --border-strong: #cbd5e1;
+  --border-focus: #10b981;
+
+  /* Typography */
   --text-primary: #0f172a;
-  --text-secondary: #475569;
+  --text-secondary: #334155;
   --text-muted: #64748b;
+
+  /* Translucent Surface Elements */
   --header-bg: rgba(255, 255, 255, 0.92);
   --table-hover: #f1f5f9;
-  --accent-carry: #059669;
-  --accent-loss: #e11d48;
-  --accent-funding: #0891b2;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+
+  /* Functional Semantic Colors */
+  --accent-carry: #059669;      /* Positive PnL & Emerald Actions */
+  --accent-carry-bg: rgba(5, 150, 105, 0.10);
+  --accent-loss: #e11d48;       /* Negative PnL & Danger */
+  --accent-loss-bg: rgba(225, 29, 72, 0.10);
+  --accent-funding: #0891b2;    /* Hyperliquid & Funding Flows */
+  --accent-funding-bg: rgba(8, 145, 178, 0.10);
+  --accent-binance: #d97706;    /* Binance Accent */
+  --accent-binance-bg: rgba(217, 119, 6, 0.10);
   --accent-brand: #059669;
 }
 
 html.dark {
-  --bg-canvas: #090d14;
-  --bg-surface: #0e1420;
-  --bg-elevated: #141c2c;
-  --bg-subtle: #192336;
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --text-primary: #f1f5f9;
+  /* Canvas & Neutral Surface Layers (Dark Mode - Deep Obsidian) */
+  --bg-canvas: #090d16;
+  --bg-surface: #0f1728;
+  --bg-elevated: #151f34;
+  --bg-hover: #1c2842;
+  --bg-active: #243354;
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-focus: #10b981;
+
+  /* Typography */
+  --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  --header-bg: rgba(9, 13, 20, 0.94);
-  --table-hover: rgba(20, 28, 44, 0.65);
-  --accent-carry: #10b981;
-  --accent-loss: #f43f5e;
-  --accent-funding: #06b6d4;
+
+  /* Translucent Surface Elements */
+  --header-bg: rgba(9, 13, 22, 0.94);
+  --table-hover: rgba(21, 31, 52, 0.65);
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+
+  /* Functional Semantic Colors */
+  --accent-carry: #10b981;      /* Positive PnL & Emerald Actions */
+  --accent-carry-bg: rgba(16, 185, 129, 0.12);
+  --accent-loss: #f43f5e;       /* Negative PnL & Danger */
+  --accent-loss-bg: rgba(244, 63, 94, 0.12);
+  --accent-funding: #06b6d4;    /* Hyperliquid & Funding Flows */
+  --accent-funding-bg: rgba(6, 182, 212, 0.12);
+  --accent-binance: #f59e0b;    /* Binance Accent */
+  --accent-binance-bg: rgba(245, 158, 11, 0.12);
   --accent-brand: #10b981;
 }
 
+/* Base Body Styling */
 body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
-  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.012em;
   transition: background-color 0.15s ease, color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
-  letter-spacing: -0.01em;
 }
 
-/* Tabular Numbers for Quantitative Alignment */
+/* High-Precision Tabular Numbers for Zero Layout Shift */
 .font-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-feature-settings: "tnum" 1;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-feature-settings: "tnum" 1, "zero" 1;
   font-variant-numeric: tabular-nums;
 }
 
 /* Custom Text Selection */
 ::selection {
   background: rgba(16, 185, 129, 0.25);
-  color: #ffffff;
+  color: inherit;
 }
 
-/* Minimal Custom Scrollbar */
+/* Minimalist Native-Grade Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 2px;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
-/* Focused Surface Elements */
+/* Professional Surface Cards */
 .surface-card {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  border-radius: 0.75rem;
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-/* Focused Inputs & Buttons */
-input:focus, select:focus, button:focus-visible {
+/* Interactive Component States */
+input, select, textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus) !important;
+  outline: 2px solid rgba(16, 185, 129, 0.25);
+  outline-offset: 0;
+}
+button:focus-visible {
   outline: 2px solid rgba(16, 185, 129, 0.4);
   outline-offset: 1px;
 }
 
-/* Live Status Pulse Dot */
+/* Live WebSocket Pulse Dot */
 .pulse-dot {
   box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
   animation: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -95,4 +144,51 @@ input:focus, select:focus, button:focus-visible {
   0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
   70% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Status Chips & Badges */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.chip-emerald {
+  background-color: var(--accent-carry-bg);
+  color: var(--accent-carry);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.chip-cyan {
+  background-color: var(--accent-funding-bg);
+  color: var(--accent-funding);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+}
+.chip-amber {
+  background-color: var(--accent-binance-bg);
+  color: var(--accent-binance);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.chip-rose {
+  background-color: var(--accent-loss-bg);
+  color: var(--accent-loss);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+.chip-neutral {
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Segmented Control Buttons */
+.tab-btn {
+  position: relative;
+  font-weight: 500;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tab-btn:active {
+  transform: scale(0.98);
 }
