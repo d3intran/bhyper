@@ -26,6 +26,9 @@ export function openModal(id) {
   if (m) {
     m.classList.remove('hidden');
     m.classList.add('flex');
+    m.setAttribute('aria-hidden', 'false');
+    const firstInput = m.querySelector('input:not([readonly]), button');
+    if (firstInput) firstInput.focus();
   }
 }
 
@@ -34,7 +37,28 @@ export function closeModal(id) {
   if (m) {
     m.classList.remove('flex');
     m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
   }
+}
+
+export function setupModalListeners() {
+  // Global Escape key to dismiss modals
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('[id^="modal-"]:not(.hidden)').forEach(modal => {
+        closeModal(modal.id);
+      });
+    }
+  });
+
+  // Click backdrop to dismiss
+  document.querySelectorAll('[id^="modal-"]').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal(modal.id);
+      }
+    });
+  });
 }
 
 export function showToast(msg, type = 'info') {
@@ -45,13 +69,24 @@ export function showToast(msg, type = 'info') {
   const isError = type === 'error';
   const isSuccess = type === 'success';
   
-  let bgClass = 'bg-slate-900 border border-slate-700 text-white';
-  if (isError) bgClass = 'bg-rose-950/90 border border-rose-800 text-rose-200';
-  if (isSuccess) bgClass = 'bg-emerald-950/90 border border-emerald-800 text-emerald-200';
+  let bgClass = 'bg-slate-900/95 border-slate-700 text-white';
+  let icon = '<i data-lucide="info" class="w-4 h-4 text-cyan-400"></i>';
 
-  el.className = `${bgClass} px-3.5 py-2 rounded-lg shadow-lg text-xs font-medium transition-all duration-300 transform translate-y-2 opacity-0 flex items-center space-x-2 backdrop-blur-md`;
-  el.innerHTML = `<span>${isError ? '✕' : '✓'}</span><span>${msg}</span>`;
+  if (isError) {
+    bgClass = 'bg-rose-950/95 border-rose-800 text-rose-100';
+    icon = '<i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400"></i>';
+  } else if (isSuccess) {
+    bgClass = 'bg-emerald-950/95 border-emerald-800 text-emerald-100';
+    icon = '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>';
+  }
+
+  el.className = `${bgClass} border px-3.5 py-2.5 rounded-lg shadow-xl text-xs font-medium transition-all duration-200 transform translate-y-2 opacity-0 flex items-center space-x-2.5 backdrop-blur-md max-w-sm pointer-events-auto`;
+  el.innerHTML = `<span>${icon}</span><span class="flex-1">${msg}</span>`;
   container.appendChild(el);
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 
   requestAnimationFrame(() => {
     el.classList.remove('translate-y-2', 'opacity-0');
@@ -59,6 +94,6 @@ export function showToast(msg, type = 'info') {
 
   setTimeout(() => {
     el.classList.add('opacity-0', '-translate-y-2');
-    setTimeout(() => el.remove(), 300);
-  }, 3000);
+    setTimeout(() => el.remove(), 250);
+  }, 3200);
 }

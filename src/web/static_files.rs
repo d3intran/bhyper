@@ -14,6 +14,7 @@ pub const RADAR_JS: &str = include_str!("../../static/js/components/radar.js");
 pub const POSITIONS_JS: &str = include_str!("../../static/js/components/positions.js");
 pub const CONFIG_JS: &str = include_str!("../../static/js/components/config.js");
 pub const JOURNAL_JS: &str = include_str!("../../static/js/components/journal.js");
+pub const ABOUT_JS: &str = include_str!("../../static/js/components/about.js");
 
 #[inline]
 fn static_response(content: &'static str, content_type: &'static str) -> Response {
@@ -74,6 +75,11 @@ pub async fn serve_config_js() -> impl IntoResponse {
 /// Serves journal.js
 pub async fn serve_journal_js() -> impl IntoResponse {
     static_response(JOURNAL_JS, "application/javascript; charset=utf-8")
+}
+
+/// Serves about.js
+pub async fn serve_about_js() -> impl IntoResponse {
+    static_response(ABOUT_JS, "application/javascript; charset=utf-8")
 }
 
 /// Serves favicon

@@ -1,5 +1,6 @@
 /**
  * BHyper Terminal - Live Strategy Config Component
+ * Pure English Institutional Layout
  */
 import { apiFetch, showToast } from '../api.js';
 
@@ -9,7 +10,7 @@ export async function fetchAndPopulateConfig() {
     populateConfigFields(cfg);
     return cfg;
   } catch (e) {
-    showToast('获取策略配置失败: ' + e.message, 'error');
+    showToast('Failed to load strategy configuration: ' + e.message, 'error');
     return null;
   }
 }
@@ -89,14 +90,14 @@ export async function saveCurrentConfig(currentConfig) {
       body: JSON.stringify(updated)
     });
     if (res.status === 'ok') {
-      showToast('参数热更新成功，已即刻生效', 'success');
+      showToast('Configuration hot-reloaded and saved successfully', 'success');
       return updated;
     } else {
-      showToast('更新失败: ' + res.message, 'error');
+      showToast('Failed to update config: ' + res.message, 'error');
       return currentConfig;
     }
   } catch (e) {
-    showToast('请求异常: ' + e.message, 'error');
+    showToast('Network request error: ' + e.message, 'error');
     return currentConfig;
   }
 }

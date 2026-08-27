@@ -1,12 +1,14 @@
 /**
  * BHyper Terminal - Main Application Entrypoint
+ * Mode: Operate (Institutional Clean & Modern - Pure English)
  */
-import { apiFetch, closeModal, openModal, showToast } from './api.js';
+import { apiFetch, closeModal, openModal, setupModalListeners, showToast } from './api.js';
 import { renderHealthAssessment, renderWalletStats, renderDashboardTopRadar } from './components/overview.js';
 import { renderRadarTable } from './components/radar.js';
 import { renderPositions } from './components/positions.js';
 import { fetchAndPopulateConfig, saveCurrentConfig } from './components/config.js';
 import { fetchAndRenderJournal } from './components/journal.js';
+import { renderAboutSection } from './components/about.js';
 import { formatCurrency, formatPnl, triggerHaptic } from './utils/format.js';
 
 export const appState = {
@@ -21,7 +23,7 @@ export const appState = {
   tgWebApp: window.Telegram?.WebApp || null,
 };
 
-// 1. 初始化 Telegram Mini App
+// 1. Initialize Telegram Mini App
 if (appState.tgWebApp) {
   try {
     appState.tgWebApp.ready();
@@ -29,14 +31,14 @@ if (appState.tgWebApp) {
     if (appState.tgWebApp.initDataUnsafe?.user) {
       const u = appState.tgWebApp.initDataUnsafe.user;
       const elUser = document.getElementById('tg-user-badge');
-      if (elUser) elUser.innerText = `@${u.username || u.first_name}`;
+      if (elUser) elUser.innerText = `@${u.username || u.first_name || 'Terminal'}`;
     }
   } catch (e) {
     console.warn('Telegram init error:', e);
   }
 }
 
-// 2. 主题管理 (Dark / Light)
+// 2. Theme Management (Dark / Light)
 export function initTheme() {
   const saved = localStorage.getItem('theme');
   if (saved === 'light') {
@@ -70,7 +72,7 @@ export function refreshIcons() {
   }
 }
 
-// 3. 选项卡路由
+// 3. Tab Routing
 export function switchTab(tabId) {
   triggerHaptic();
   appState.currentTab = tabId;
@@ -79,22 +81,25 @@ export function switchTab(tabId) {
   const target = document.getElementById(`tab-${tabId}`);
   if (target) target.classList.remove('hidden');
 
-  // Desktop Nav
+  // Desktop Navigation
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]';
+    btn.setAttribute('aria-selected', 'false');
   });
   const activeNav = document.getElementById(`nav-btn-${tabId}`);
   if (activeNav) {
     activeNav.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm';
+    activeNav.setAttribute('aria-selected', 'true');
   }
 
-  // Mobile Nav
-  ['dashboard', 'radar', 'positions', 'config', 'journal'].forEach(t => {
+  // Mobile Navigation
+  ['dashboard', 'radar', 'positions', 'config', 'journal', 'about'].forEach(t => {
     const mobBtn = document.getElementById(`mob-btn-${t}`);
     if (mobBtn) {
       mobBtn.className = t === tabId 
-        ? 'flex flex-col items-center text-emerald-500 text-[10px] font-medium p-1' 
-        : 'flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1';
+        ? 'touch-target-min flex flex-col items-center justify-center text-emerald-500 text-[10px] font-medium p-1' 
+        : 'touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1';
+      mobBtn.setAttribute('aria-selected', t === tabId ? 'true' : 'false');
     }
   });
 
@@ -107,16 +112,29 @@ export function switchTab(tabId) {
       if (cfg) appState.config = cfg;
     });
   }
+  if (tabId === 'about') {
+    renderAboutSection();
+  }
   refreshIcons();
 }
 
-// 4. WebSocket 实时通信
+// 4. WebSocket Communication
+let reconnectTimeout = null;
+
 export function initWebSocket() {
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const token = new URLSearchParams(location.search).get('token');
   const wsUrl = `${protocol}//${location.host}/api/ws${token ? '?token=' + encodeURIComponent(token) : ''}`;
 
   try {
+    if (appState.ws) {
+      appState.ws.close();
+    }
     appState.ws = new WebSocket(wsUrl);
 
     appState.ws.onopen = () => {
@@ -146,10 +164,14 @@ export function initWebSocket() {
         st.className = 'font-semibold text-rose-500 text-[10px]';
         st.innerText = 'WS RECONNECT';
       }
-      setTimeout(initWebSocket, 2500);
+      reconnectTimeout = setTimeout(initWebSocket, 2500);
+    };
+
+    appState.ws.onerror = () => {
+      // Handled by onclose
     };
   } catch (e) {
-    console.error('WS error:', e);
+    console.error('WS init error:', e);
   }
 }
 
@@ -180,7 +202,7 @@ function handleWsTick(msg) {
   }
 }
 
-// 5. 初始化拉取数据
+// 5. Initial Data Loading
 export async function fetchInitialData() {
   try {
     const [statusRes, scanRes, posRes, healthRes] = await Promise.all([
@@ -197,7 +219,7 @@ export async function fetchInitialData() {
       const pnlEl = document.getElementById('stat-realized-pnl');
       if (pnlEl) {
         pnlEl.innerText = formatPnl(statusRes.total_realized_pnl_usd, 4);
-        pnlEl.className = `text-2xl font-num font-bold mt-1.5 tracking-tight ${statusRes.total_realized_pnl_usd >= 0 ? 'text-emerald-500' : 'text-rose-500'}`;
+        pnlEl.className = `text-2xl font-num font-bold mt-1 tracking-tight ${statusRes.total_realized_pnl_usd >= 0 ? 'text-emerald-500' : 'text-rose-500'}`;
       }
       if (statusRes.total_closed_trades !== undefined) {
         const elTrades = document.getElementById('stat-trade-count');
@@ -239,7 +261,7 @@ export async function fetchInitialData() {
   }
 }
 
-// 6. 交互处理
+// 6. Interactive Handlers
 export function openTradeModal(symbol) {
   triggerHaptic();
   const el = document.getElementById('modal-pt-symbol');
@@ -260,13 +282,13 @@ export async function executePaperTrade(action) {
       body: JSON.stringify({ symbol, margin_usd: margin, action })
     });
     if (res.status === 'ok') {
-      showToast(`模拟${action === 'open' ? '开仓' : '平仓'}成功: ${symbol}`, 'success');
+      showToast(`Simulated ${action === 'open' ? 'Open' : 'Close'} executed: ${symbol}`, 'success');
       fetchInitialData();
     } else {
-      showToast('模拟下单失败: ' + res.message, 'error');
+      showToast('Simulation failed: ' + res.message, 'error');
     }
   } catch (e) {
-    showToast('请求异常: ' + e.message, 'error');
+    showToast('Network error: ' + e.message, 'error');
   }
 }
 
@@ -280,23 +302,23 @@ export async function handleUnwind(symbol) {
       body: JSON.stringify({ symbol })
     });
     if (res.status === 'ok') {
-      showToast(`平仓指令已发出: ${symbol}`, 'success');
+      showToast(`Unwind command dispatched: ${symbol}`, 'success');
       fetchInitialData();
     } else {
-      showToast('平仓失败: ' + res.message, 'error');
+      showToast('Unwind failed: ' + res.message, 'error');
     }
   } catch (e) {
-    showToast('请求异常: ' + e.message, 'error');
+    showToast('Network error: ' + e.message, 'error');
   }
 }
 
-// 7. 顶部时钟与结算倒计时 (UTC+8 / Asia/Shanghai)
+// 7. Header Clock & Settlement Countdown (UTC+8 / Asia/Shanghai)
 export function startClock() {
-  setInterval(() => {
+  const updateClock = () => {
     const now = new Date();
     const clk = document.getElementById('clock-utc');
     if (clk) {
-      clk.innerText = `${now.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })} UTC+8`;
+      clk.innerText = `${now.toLocaleTimeString('en-US', { timeZone: 'Asia/Shanghai', hour12: false })} UTC+8`;
     }
     const minsLeft = 59 - now.getUTCMinutes();
     const secsLeft = 59 - now.getUTCSeconds();
@@ -304,10 +326,34 @@ export function startClock() {
     if (cd) {
       cd.innerText = `Settlement in ${minsLeft}m ${secsLeft}s`;
     }
-  }, 1000);
+  };
+  updateClock();
+  setInterval(updateClock, 1000);
 }
 
-// 8. 挂载全局事件
+// 8. Keyboard Shortcuts
+export function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+      return;
+    }
+
+    if (e.key === '1') switchTab('dashboard');
+    else if (e.key === '2') switchTab('radar');
+    else if (e.key === '3') switchTab('positions');
+    else if (e.key === '4') switchTab('config');
+    else if (e.key === '5') switchTab('journal');
+    else if (e.key === '6') switchTab('about');
+    else if (e.key === '/') {
+      e.preventDefault();
+      switchTab('radar');
+      const searchInput = document.getElementById('radar-search');
+      if (searchInput) searchInput.focus();
+    }
+  });
+}
+
+// 9. Attach Global Handlers
 window.switchTab = switchTab;
 window.toggleTheme = toggleTheme;
 window.fetchInitialData = fetchInitialData;
@@ -318,11 +364,13 @@ window.handleUnwind = handleUnwind;
 window.setRadarFilter = (f) => {
   appState.radarFilter = f;
   document.querySelectorAll('.rf-btn').forEach(btn => {
-    btn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition';
+    btn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95';
+    btn.setAttribute('aria-pressed', 'false');
   });
   const activeBtn = document.getElementById(`rf-btn-${f}`);
   if (activeBtn) {
-    activeBtn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition';
+    activeBtn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition active:scale-95';
+    activeBtn.setAttribute('aria-pressed', 'true');
   }
   const kw = document.getElementById('radar-search')?.value || '';
   renderRadarTable(appState.opportunities, appState.radarFilter, kw, openTradeModal);
@@ -347,10 +395,12 @@ window.fetchJournalEntries = () => {
   fetchAndRenderJournal(type);
 };
 
-// 启动入口
+// Bootstrap
 window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   refreshIcons();
+  setupModalListeners();
+  setupKeyboardShortcuts();
   initWebSocket();
   fetchInitialData();
   startClock();

@@ -124,10 +124,23 @@ async fn test_web_embedded_static_index_html() {
         .method("GET")
         .body(Body::empty())
         .unwrap();
-    let res_js = app.oneshot(req_js).await.unwrap();
+    let res_js = app.clone().oneshot(req_js).await.unwrap();
     assert_eq!(res_js.status(), StatusCode::OK);
     assert_eq!(
         res_js.headers().get("content-type").unwrap(),
+        "application/javascript; charset=utf-8"
+    );
+
+    // Test about.js route
+    let req_about = Request::builder()
+        .uri("/js/components/about.js")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let res_about = app.oneshot(req_about).await.unwrap();
+    assert_eq!(res_about.status(), StatusCode::OK);
+    assert_eq!(
+        res_about.headers().get("content-type").unwrap(),
         "application/javascript; charset=utf-8"
     );
 }

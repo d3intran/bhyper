@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T17:15:00Z",
+  "title": "Design System: BHyper Terminal",
+  "extensions": {
+    "colorMeta": {
+      "accent-carry": {
+        "role": "primary",
+        "displayName": "Carry Emerald",
+        "canonical": "#10b981",
+        "tonalRamp": ["#022c22", "#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#34d399", "#6ee7b7"]
+      },
+      "accent-funding": {
+        "role": "secondary",
+        "displayName": "Hyperliquid Cyan",
+        "canonical": "#06b6d4",
+        "tonalRamp": ["#083344", "#164e63", "#155e75", "#0e7490", "#0891b2", "#06b6d4", "#22d3ee", "#67e8f9"]
+      },
+      "accent-binance": {
+        "role": "secondary",
+        "displayName": "Binance Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a"]
+      },
+      "accent-loss": {
+        "role": "secondary",
+        "displayName": "Risk Rose",
+        "canonical": "#f43f5e",
+        "tonalRamp": ["#4c0519", "#881337", "#9f1239", "#be123c", "#e11d48", "#f43f5e", "#fb7185", "#fda4af"]
+      },
+      "bg-canvas-dark": {
+        "role": "neutral",
+        "displayName": "Obsidian Canvas",
+        "canonical": "#090d16",
+        "tonalRamp": ["#05070c", "#090d16", "#0f172a", "#162035", "#1e2d4a", "#26395c", "#334b75", "#476495"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Primary KPI totals and major headlines." },
+      "numeric": { "displayName": "Numeric Mono", "purpose": "Financial prices, rates, timestamps, and balances." }
+    },
+    "shadows": [
+      { "name": "card-subtle", "value": "0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.2)", "purpose": "Card container elevation." },
+      { "name": "modal-elevation", "value": "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)", "purpose": "Confirmation dialogs." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Standard UI transition 150ms." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary action button with emerald carry theme.",
+      "html": "<button class=\"ds-btn-primary\">SAVE CHANGES</button>",
+      "css": ".ds-btn-primary { background: #10b981; color: #ffffff; padding: 6px 14px; border-radius: 8px; font-weight: 500; font-size: 12px; border: none; cursor: pointer; transition: background 0.15s, transform 0.1s; } .ds-btn-primary:hover { background: #059669; } .ds-btn-primary:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Unwind Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Danger action button for position liquidation.",
+      "html": "<button class=\"ds-btn-danger\">平仓</button>",
+      "css": ".ds-btn-danger { background: rgba(244, 63, 94, 0.12); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.25); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; transition: background 0.15s; } .ds-btn-danger:hover { background: rgba(244, 63, 94, 0.22); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Obsidian Quant Terminal",
+    "overview": "BHyper is designed for professional quantitative crypto arbitrageurs who manage high-stakes delta-neutral funding carry positions. Razor-sharp contrast, tabular numeric stability, and zero unnecessary visual ornament.",
+    "keyCharacteristics": [
+      "Obsidian and slate layered surfaces",
+      "Tabular monospace font for prices and rates",
+      "Disciplined semantic color vocabulary",
+      "Telegram Mini App mobile excellence"
+    ],
+    "rules": [
+      { "name": "The One Meaning Rule", "body": "A semantic color never changes its role across screens.", "section": "colors" },
+      { "name": "The Tabular Number Invariant", "body": "All financial numbers use tabular monospace formatting.", "section": "typography" }
+    ],
+    "dos": [
+      "Do use tabular monospace numbers for all live data.",
+      "Do keep UI transitions fast (150-200ms).",
+      "Do ensure full keyboard focus visibility."
+    ],
+    "donts": [
+      "Don't use decorative rainbow gradients.",
+      "Don't allow layout shifts on WebSocket ticks.",
+      "Don't hide critical liquidation alerts."
+    ]
+  }
+}

@@ -66,6 +66,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/js/components/journal.js",
             get(static_files::serve_journal_js),
         )
+        .route("/js/components/about.js", get(static_files::serve_about_js))
         .nest("/api", api_routes)
         .layer(middleware::from_fn_with_state(
             state.clone(),

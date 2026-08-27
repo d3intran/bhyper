@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,10 +8,10 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   
-  <!-- Google Fonts: Inter, JetBrains Mono, Noto Sans SC -->
+  <!-- Google Fonts: Inter, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,7 +20,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Design Tokens & Impeccable Theming -->
-  <link rel="stylesheet" href="/css/theme.css?v=2.1.0">
+  <link rel="stylesheet" href="/css/theme.css?v=2.3.0">
   
   <script>
     tailwind.config = {
@@ -28,7 +28,7 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['"Inter"', '"Noto Sans SC"', 'system-ui', '-apple-system', 'sans-serif'],
+            sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
             mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
           },
           colors: {
@@ -48,7 +48,7 @@
 <body class="min-h-screen flex flex-col custom-scrollbar text-[13px] select-none antialiased">
 
   <!-- ========================================================================= -->
-  <!-- 1. 顶部控制条 (Terminal Header)                                            -->
+  <!-- 1. Terminal Header                                                        -->
   <!-- ========================================================================= -->
   <header class="sticky top-0 z-40 backdrop-blur-md border-b border-[var(--border-subtle)] bg-[var(--header-bg)] px-3 sm:px-5 py-2.5 transition-colors">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
@@ -65,49 +65,53 @@
             <span id="badge-version" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-num font-semibold border border-emerald-500/30">v0.2.0</span>
           </div>
           <div class="flex items-center space-x-2 text-[11px] text-[var(--text-muted)] mt-0.5">
-            <span id="status-indicator" class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block"></span>
+            <span id="status-indicator" class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block" aria-hidden="true"></span>
             <span id="status-text" class="font-semibold text-emerald-500 text-[10px]">WS LIVE</span>
-            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <span class="text-slate-300 dark:text-slate-700" aria-hidden="true">•</span>
             <span id="tg-user-badge" class="font-medium text-[11px]">Terminal</span>
-            <span class="text-slate-300 dark:text-slate-700">•</span>
-            <span class="font-num text-[11px]"><span id="header-cache-count" class="font-semibold text-emerald-500">206</span> 标的</span>
+            <span class="text-slate-300 dark:text-slate-700" aria-hidden="true">•</span>
+            <span class="font-num text-[11px]"><span id="header-cache-count" class="font-semibold text-emerald-500">206</span> Markets</span>
           </div>
         </div>
       </div>
 
       <!-- Desktop Nav Tabs -->
-      <nav class="hidden md:flex items-center space-x-1 bg-slate-200/50 dark:bg-[#0f1728] p-1 rounded-xl border border-[var(--border-subtle)]">
-        <button onclick="switchTab('dashboard')" id="nav-btn-dashboard" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm">
+      <nav class="hidden md:flex items-center space-x-1 bg-slate-200/50 dark:bg-[#0f1728] p-1 rounded-xl border border-[var(--border-subtle)]" role="tablist" aria-label="Terminal Views">
+        <button onclick="switchTab('dashboard')" id="nav-btn-dashboard" role="tab" aria-selected="true" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm">
           <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
-          <span>总览</span>
+          <span>Overview</span>
         </button>
-        <button onclick="switchTab('radar')" id="nav-btn-radar" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('radar')" id="nav-btn-radar" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           <i data-lucide="radar" class="w-3.5 h-3.5"></i>
-          <span>机会雷达</span>
+          <span>Opportunity Radar</span>
           <span id="radar-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300">206</span>
         </button>
-        <button onclick="switchTab('positions')" id="nav-btn-positions" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('positions')" id="nav-btn-positions" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-          <span>活跃持仓</span>
+          <span>Positions</span>
           <span id="pos-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-amber-500/20 text-amber-500 font-bold">0</span>
         </button>
-        <button onclick="switchTab('config')" id="nav-btn-config" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('config')" id="nav-btn-config" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
-          <span>策略调优</span>
+          <span>Strategy Config</span>
         </button>
-        <button onclick="switchTab('journal')" id="nav-btn-journal" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('journal')" id="nav-btn-journal" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
-          <span>全息流水</span>
+          <span>Audit Journal</span>
+        </button>
+        <button onclick="switchTab('about')" id="nav-btn-about" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+          <span>Architecture</span>
         </button>
       </nav>
 
       <!-- Right Controls: Clock & Theme Toggle -->
       <div class="flex items-center space-x-2.5">
-        <button onclick="toggleTheme()" id="theme-toggle-btn" title="切换深色/浅色主题" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
+        <button onclick="toggleTheme()" id="theme-toggle-btn" aria-label="Toggle Dark/Light Theme" title="Toggle Theme" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
           <i data-lucide="moon" id="theme-icon" class="w-3.5 h-3.5 text-slate-400"></i>
         </button>
 
-        <button onclick="fetchInitialData()" title="立即刷新最新快照" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
+        <button onclick="fetchInitialData()" aria-label="Refresh Market Snapshot" title="Refresh Snapshot" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
           <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-400"></i>
         </button>
 
@@ -121,17 +125,17 @@
   </header>
 
   <!-- ========================================================================= -->
-  <!-- 2. 主体容器                                                              -->
+  <!-- 2. Main Content Container                                                 -->
   <!-- ========================================================================= -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 space-y-4 pb-24 md:pb-8">
 
     <!-- KPI Metrics Ribbon (4 Cards) -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" aria-label="Key Performance Indicators">
       
       <!-- Card 1: Total Equity -->
       <div class="surface-card p-4 transition-colors">
         <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
-          <span>跨所净总权益</span>
+          <span>Net Cross-Exchange Equity</span>
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
             <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
           </div>
@@ -146,29 +150,29 @@
       <!-- Card 2: Realized PnL -->
       <div class="surface-card p-4 transition-colors">
         <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
-          <span>累计已实现盈亏</span>
+          <span>Cumulative Realized PnL</span>
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
             <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
           </div>
         </div>
         <div id="stat-realized-pnl" class="text-2xl font-num font-bold text-emerald-500 mt-1 tracking-tight">+$0.0000</div>
         <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
-          <span>胜率: <b id="stat-win-rate" class="text-emerald-500 font-semibold">100.0%</b></span>
-          <span>共 <b id="stat-trade-count" class="text-[var(--text-primary)] font-semibold">0</b> 笔平仓</span>
+          <span>Win Rate: <b id="stat-win-rate" class="text-emerald-500 font-semibold">100.0%</b></span>
+          <span><b id="stat-trade-count" class="text-[var(--text-primary)] font-semibold">0</b> Closed</span>
         </div>
       </div>
 
       <!-- Card 3: Net Funding Carry -->
       <div class="surface-card p-4 transition-colors">
         <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
-          <span>累计净资金费收益</span>
+          <span>Net Funding Carry Income</span>
           <div class="w-6 h-6 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-500">
             <i data-lucide="coins" class="w-3.5 h-3.5"></i>
           </div>
         </div>
         <div id="stat-funding-income" class="text-2xl font-num font-bold text-cyan-500 mt-1 tracking-tight">+$0.0000</div>
         <div class="text-[10px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
-          <span>资金费 <span id="stat-gross-funding" class="text-cyan-500 font-medium">+$0.00</span> · 手续费 <span id="stat-total-fees" class="text-rose-500 font-medium">-$0.00</span></span>
+          <span>Gross <span id="stat-gross-funding" class="text-cyan-500 font-medium">+$0.00</span> · Fees <span id="stat-total-fees" class="text-rose-500 font-medium">-$0.00</span></span>
           <span id="stat-hourly-runrate" class="text-cyan-600 dark:text-cyan-400 font-medium">~$0.00/h</span>
         </div>
       </div>
@@ -176,38 +180,38 @@
       <!-- Card 4: Active Positions & Margin Utilization -->
       <div class="surface-card p-4 transition-colors">
         <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
-          <span>活跃套利对与保证金</span>
+          <span>Active Pairs & Margin</span>
           <div class="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
             <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
           </div>
         </div>
         <div class="flex items-baseline space-x-2 mt-1">
-          <span id="stat-active-pairs" class="text-2xl font-num font-bold text-amber-500 tracking-tight">0 对</span>
-          <span id="stat-margin-util" class="text-xs font-num text-[var(--text-muted)] font-medium">(已用 0.0%)</span>
+          <span id="stat-active-pairs" class="text-2xl font-num font-bold text-amber-500 tracking-tight">0 Pairs</span>
+          <span id="stat-margin-util" class="text-xs font-num text-[var(--text-muted)] font-medium">(0.0% Used)</span>
         </div>
         <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
-          <span>强平缓冲: <b class="text-emerald-500 font-semibold">>50%</b></span>
-          <span id="stat-health-badge" class="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/20">HEALTHY</span>
+          <span>Liq. Buffer: <b class="text-emerald-500 font-semibold">>50%</b></span>
+          <span id="stat-health-badge" class="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/25">HEALTHY</span>
         </div>
       </div>
 
     </section>
 
     <!-- ========================================================================= -->
-    <!-- TAB 1: 总览 (DASHBOARD)                                                   -->
+    <!-- TAB 1: OVERVIEW                                                           -->
     <!-- ========================================================================= -->
-    <section id="tab-dashboard" class="tab-pane space-y-4">
+    <section id="tab-dashboard" class="tab-pane space-y-4" role="tabpanel" aria-labelledby="nav-btn-dashboard">
       
-      <!-- 双所保证金仪表盘 -->
+      <!-- Dual Exchange Margin Health Gauge -->
       <div class="surface-card p-4">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center space-x-2">
             <span class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-1.5">
               <i data-lucide="shield" class="w-4 h-4 text-emerald-500"></i>
-              <span>跨所保证金健康与再平衡状态</span>
+              <span>Cross-Exchange Margin Health & Capital Balance</span>
             </span>
           </div>
-          <span id="rebalance-status-badge" class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">资金完全平衡</span>
+          <span id="rebalance-status-badge" class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/25">Balanced</span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -218,14 +222,14 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                 <span>Binance Futures (USDT-M)</span>
               </span>
-              <span id="bn-health-util" class="font-num text-[var(--text-primary)] font-medium">已用 $0.00 (0.0%)</span>
+              <span id="bn-health-util" class="font-num text-[var(--text-primary)] font-medium">Allocated: $0.00 (0.0%)</span>
             </div>
             <div class="w-full bg-slate-300 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div id="bn-util-bar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
             <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
-              <span>可用保证金: <b id="bn-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
-              <span>强平距离: <b id="bn-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
+              <span>Free Margin: <b id="bn-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
+              <span>Liq. Distance: <b id="bn-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
             </div>
           </div>
 
@@ -236,84 +240,84 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
                 <span>Hyperliquid L1 (USDC)</span>
               </span>
-              <span id="hl-health-util" class="font-num text-[var(--text-primary)] font-medium">已用 $0.00 (0.0%)</span>
+              <span id="hl-health-util" class="font-num text-[var(--text-primary)] font-medium">Allocated: $0.00 (0.0%)</span>
             </div>
             <div class="w-full bg-slate-300 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div id="hl-util-bar" class="bg-cyan-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
             <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
-              <span>可用保证金: <b id="hl-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
-              <span>强平距离: <b id="hl-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
+              <span>Free Margin: <b id="hl-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
+              <span>Liq. Distance: <b id="hl-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
             </div>
           </div>
         </div>
 
-        <div id="rebalance-advisory-box" class="mt-2.5 text-xs bg-[var(--bg-elevated)] p-2 rounded-lg border border-[var(--border-subtle)] flex items-center justify-between text-[var(--text-muted)]">
+        <div id="rebalance-advisory-box" class="mt-2.5 text-xs bg-[var(--bg-elevated)] p-2.5 rounded-lg border border-[var(--border-subtle)] flex items-center justify-between text-[var(--text-muted)]">
           <span id="rebalance-advisory-text" class="flex items-center space-x-1.5">
             <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
-            <span>两所资金配比健康，无需执行划转。</span>
+            <span>Cross-exchange margin allocation is optimal. No transfer needed.</span>
           </span>
-          <span class="text-[11px] font-num text-[var(--text-muted)]">再平衡阈值: 40.0%</span>
+          <span class="text-[11px] font-num text-[var(--text-muted)]">Rebalance Threshold: 40.0%</span>
         </div>
       </div>
 
-      <!-- 实时持仓简表 -->
+      <!-- Real-Time Positions Summary -->
       <div class="surface-card p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-2">
             <i data-lucide="layers" class="w-4 h-4 text-emerald-500"></i>
-            <span>活跃对冲套利持仓</span>
+            <span>Active Hedged Arbitrage Positions</span>
           </h3>
           <button onclick="switchTab('positions')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
-            <span>管理详情</span>
+            <span>Manage Details</span>
             <i data-lucide="chevron-right" class="w-3 h-3"></i>
           </button>
         </div>
         <div id="dashboard-positions-deck" class="space-y-2">
-          <!-- 动态注入持仓条目 -->
+          <!-- Dynamic Positions Injection -->
         </div>
       </div>
 
-      <!-- Top 5 机会快速榜 -->
+      <!-- Top 5 Spread Alpha Quickboard -->
       <div class="surface-card p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-2">
             <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500"></i>
-            <span>当前顶级利差机会 (Top Alpha)</span>
+            <span>Top Spread Alpha Opportunities</span>
           </h3>
           <button onclick="switchTab('radar')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
-            <span>查看全部标的</span>
+            <span>View All Markets</span>
             <i data-lucide="chevron-right" class="w-3 h-3"></i>
           </button>
         </div>
         <div id="dashboard-top-radar-table" class="overflow-x-auto custom-scrollbar">
-          <!-- 动态注入 Top 5 表格 -->
+          <!-- Dynamic Top 5 Table -->
         </div>
       </div>
 
     </section>
 
     <!-- ========================================================================= -->
-    <!-- TAB 2: 机会雷达 (RADAR)                                                   -->
+    <!-- TAB 2: OPPORTUNITY RADAR                                                  -->
     <!-- ========================================================================= -->
-    <section id="tab-radar" class="tab-pane hidden space-y-4">
+    <section id="tab-radar" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-radar">
       
-      <!-- 控制与过滤器栏 -->
+      <!-- Controls & Filter Toolbar -->
       <div class="surface-card rounded-xl p-3 space-y-3">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
           
           <!-- Search Bar -->
           <div class="relative flex-1 max-w-md">
             <i data-lucide="search" class="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2"></i>
-            <input type="text" id="radar-search" oninput="filterRadarTable()" placeholder="搜索标的 (如 BTC, SOL, SUI, DOGE, VINE)..." class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-emerald-500 transition">
+            <input type="text" id="radar-search" oninput="filterRadarTable()" placeholder="Search symbol (e.g. BTC, SOL, SUI, DOGE)... Press / to focus" aria-label="Search Markets" class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-emerald-500 transition">
           </div>
 
           <!-- Quick Filters -->
-          <div class="flex flex-wrap items-center gap-1.5">
-            <button onclick="setRadarFilter('all')" id="rf-btn-all" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition">全部 (<span id="count-all">0</span>)</button>
-            <button onclick="setRadarFilter('high_apr')" id="rf-btn-high_apr" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition">>50% APR</button>
-            <button onclick="setRadarFilter('pos_cashflow')" id="rf-btn-pos_cashflow" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition">1h净现金流>0</button>
-            <button onclick="setRadarFilter('liquid')" id="rf-btn-liquid" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition">高流动性 (OI>$1M)</button>
+          <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Radar Filters">
+            <button onclick="setRadarFilter('all')" id="rf-btn-all" aria-pressed="true" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition active:scale-95">All (<span id="count-all">0</span>)</button>
+            <button onclick="setRadarFilter('high_apr')" id="rf-btn-high_apr" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">>50% APR</button>
+            <button onclick="setRadarFilter('pos_cashflow')" id="rf-btn-pos_cashflow" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">1h Net Cashflow > 0</button>
+            <button onclick="setRadarFilter('liquid')" id="rf-btn-liquid" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">High Liquidity (OI > $1M)</button>
           </div>
 
         </div>
@@ -325,16 +329,16 @@
           <table class="w-full text-left border-collapse text-xs">
             <thead>
               <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)] text-[11px] font-semibold">
-                <th class="py-2.5 px-3.5">交易对</th>
+                <th class="py-2.5 px-3.5">Asset</th>
                 <th class="py-2.5 px-3">Binance (8h)</th>
                 <th class="py-2.5 px-3">Hyperliquid (1h)</th>
-                <th class="py-2.5 px-3 text-right">年化净利差 (APR)</th>
-                <th class="py-2.5 px-3 text-center">对冲方向</th>
-                <th class="py-2.5 px-2 text-right">回本周期</th>
-                <th class="py-2.5 px-2 text-right">预计1h净利</th>
-                <th class="py-2.5 px-2 text-right">24h 成交额</th>
-                <th class="py-2.5 px-2 text-center">评级</th>
-                <th class="py-2.5 px-3 text-right">操作</th>
+                <th class="py-2.5 px-3 text-right">Net Spread (APR)</th>
+                <th class="py-2.5 px-3 text-center">Hedged Legs</th>
+                <th class="py-2.5 px-2 text-right">Break-Even</th>
+                <th class="py-2.5 px-2 text-right">Est. 1h Net</th>
+                <th class="py-2.5 px-2 text-right">24h Volume</th>
+                <th class="py-2.5 px-2 text-center">Tier</th>
+                <th class="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody id="radar-table-body" class="divide-y divide-[var(--border-subtle)] font-num">
@@ -342,7 +346,7 @@
                 <td colspan="10" class="text-center py-12 text-[var(--text-muted)]">
                   <div class="flex flex-col items-center justify-center space-y-2">
                     <i data-lucide="loader" class="w-5 h-5 text-emerald-500 animate-spin"></i>
-                    <span class="text-xs">正在连接实时行情流，计算全币种利差矩阵...</span>
+                    <span class="text-xs">Connecting to real-time orderbook streams & calculating spread matrix...</span>
                   </div>
                 </td>
               </tr>
@@ -354,35 +358,35 @@
     </section>
 
     <!-- ========================================================================= -->
-    <!-- TAB 3: 活跃持仓 (POSITIONS)                                               -->
+    <!-- TAB 3: ACTIVE POSITIONS                                                   -->
     <!-- ========================================================================= -->
-    <section id="tab-positions" class="tab-pane hidden space-y-4">
+    <section id="tab-positions" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-positions">
       
       <!-- Top Actions -->
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="font-bold text-sm text-[var(--text-primary)]">活跃对冲持仓追踪</h2>
-          <p class="text-xs text-[var(--text-muted)]">监控双腿对冲状态、实时未实现盈亏、累计资金费及持仓时长</p>
+          <h2 class="font-bold text-sm text-[var(--text-primary)]">Active Hedged Position Tracking</h2>
+          <p class="text-xs text-[var(--text-muted)]">Real-time monitoring of two-legged delta neutrality, basis PnL, cumulative funding, and holding duration</p>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="openModal('modal-unwind-all')" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-semibold text-xs border border-rose-500/20 transition flex items-center space-x-1.5">
+          <button onclick="openModal('modal-unwind-all')" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-semibold text-xs border border-rose-500/25 transition flex items-center space-x-1.5 active:scale-95">
             <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
-            <span>紧急全平</span>
+            <span>Emergency Unwind All</span>
           </button>
         </div>
       </div>
 
       <!-- Positions Cards Container (Deterministic & Stable) -->
       <div id="positions-container" class="space-y-3">
-        <!-- 动态注入稳定排序的持仓卡片 -->
+        <!-- Injected Position Cards -->
       </div>
 
     </section>
 
     <!-- ========================================================================= -->
-    <!-- TAB 4: 策略调优工作台 (CONFIG)                                            -->
+    <!-- TAB 4: STRATEGY CONFIG WORKBENCH                                          -->
     <!-- ========================================================================= -->
-    <section id="tab-config" class="tab-pane hidden space-y-4">
+    <section id="tab-config" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-config">
       
       <div class="surface-card p-4 sm:p-5 space-y-4">
         
@@ -390,113 +394,113 @@
           <div>
             <h2 class="font-bold text-sm text-[var(--text-primary)] flex items-center space-x-2">
               <i data-lucide="sliders" class="w-4 h-4 text-emerald-500"></i>
-              <span>策略运行参数调优</span>
+              <span>Execution & Strategy Parameter Tuning</span>
             </h2>
-            <p class="text-xs text-[var(--text-muted)] mt-0.5">修改后点击保存立即原子刷盘并在内存中即刻生效，无需重启进程</p>
+            <p class="text-xs text-[var(--text-muted)] mt-0.5">Parameters hot-reload atomically to disk and take effect immediately in memory without restarting daemon</p>
           </div>
           <button onclick="saveConfigToServer()" class="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-xs shadow-sm transition flex items-center space-x-1.5 active:scale-95">
             <i data-lucide="save" class="w-3.5 h-3.5"></i>
-            <span>保存并生效</span>
+            <span>Save & Apply</span>
           </button>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
           
-          <!-- 1. 触发阈值 -->
+          <!-- 1. Trigger Thresholds -->
           <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
             <div class="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              <span>核心套利开仓与平仓线</span>
+              <span>Arbitrage Entry & Exit Thresholds</span>
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">最小开仓净利差 APR (%)</label>
+              <label for="cfg-min-open-apr" class="block text-[var(--text-muted)] mb-1">Min. Entry Net Spread APR (%)</label>
               <input type="number" id="cfg-min-open-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">24h+ Carry 模式入场 APR (%)</label>
+              <label for="cfg-min-carry-apr" class="block text-[var(--text-muted)] mb-1">24h+ Carry Mode Min APR (%)</label>
               <input type="number" id="cfg-min-carry-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">利差衰减离场线 Exit APR (%)</label>
+              <label for="cfg-min-exit-apr" class="block text-[var(--text-muted)] mb-1">Decay Exit Threshold APR (%)</label>
               <input type="number" id="cfg-min-exit-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
           </div>
 
-          <!-- 2. 仓位与资金管理 -->
+          <!-- 2. Position & Margin Management -->
           <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
             <div class="font-semibold text-[var(--text-primary)] flex items-center justify-between">
               <div class="flex items-center space-x-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-                <span>动态资金分配与杠杆控制</span>
+                <span>Position Sizing & Leverage</span>
               </div>
               <label class="flex items-center space-x-1.5 cursor-pointer text-[11px] font-medium text-cyan-400">
                 <input type="checkbox" id="cfg-dynamic-sizing" class="rounded text-cyan-500 focus:ring-0">
-                <span>自适应动态分配</span>
+                <span>Adaptive Sizing</span>
               </label>
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">单笔标的硬顶上限 (Max Cap USD)</label>
+              <label for="cfg-max-pos-usd" class="block text-[var(--text-muted)] mb-1">Max Position Cap per Pair (USD)</label>
               <input type="number" id="cfg-max-pos-usd" step="10" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">清算防爆安全垫 (Safety Buffer %)</label>
+              <label for="cfg-safety-buffer" class="block text-[var(--text-muted)] mb-1">Liquidation Safety Buffer (%)</label>
               <input type="number" id="cfg-safety-buffer" min="5" max="40" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="block text-[var(--text-muted)] mb-1">持仓对数 (Slots)</label>
+                <label for="cfg-max-active-pos" class="block text-[var(--text-muted)] mb-1">Max Active Slots</label>
                 <input type="number" id="cfg-max-active-pos" min="1" max="10" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
               </div>
               <div>
-                <label class="block text-[var(--text-muted)] mb-1">杠杆 (Leverage)</label>
+                <label for="cfg-leverage" class="block text-[var(--text-muted)] mb-1">Leverage Multiplier</label>
                 <input type="number" id="cfg-leverage" min="1" max="10" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
               </div>
             </div>
           </div>
 
-          <!-- 3. 风控止盈止损 -->
+          <!-- 3. Risk Sentinels -->
           <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
             <div class="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
               <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-              <span>确定性风控哨兵</span>
+              <span>Deterministic Risk Sentinels</span>
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">硬性基差止损线 (Basis Loss bps)</label>
+              <label for="cfg-stop-loss-bps" class="block text-[var(--text-muted)] mb-1">Hard Basis Stop-Loss (bps)</label>
               <input type="number" id="cfg-stop-loss-bps" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">基差收敛止盈线 (Take Profit bps)</label>
+              <label for="cfg-take-profit-bps" class="block text-[var(--text-muted)] mb-1">Convergence Take-Profit (bps)</label>
               <input type="number" id="cfg-take-profit-bps" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
             <div>
-              <label class="block text-[var(--text-muted)] mb-1">最长持仓超时 (Hours)</label>
+              <label for="cfg-max-holding-hours" class="block text-[var(--text-muted)] mb-1">Max Holding Duration (Hours)</label>
               <input type="number" id="cfg-max-holding-hours" step="1" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
             </div>
           </div>
 
-          <!-- 4. 机构级动态资金轮动置换 (Opportunity Cost Swapper) -->
+          <!-- 4. Dynamic Opportunity Cost Swapper -->
           <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5 md:col-span-2 lg:col-span-3">
             <div class="font-semibold text-[var(--text-primary)] flex items-center justify-between">
               <div class="flex items-center space-x-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                <span>机构级全局机会成本自动换仓引擎 (Dynamic Opportunity Cost Swapper)</span>
+                <span>Dynamic Opportunity Cost Swapper Engine</span>
               </div>
               <label class="flex items-center space-x-1.5 cursor-pointer text-[11px] font-medium text-purple-400">
                 <input type="checkbox" id="cfg-auto-rotation" class="rounded text-purple-500 focus:ring-0">
-                <span>开启高 Alpha 动态抢位轮动</span>
+                <span>Enable High-Alpha Capital Rotation</span>
               </label>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
               <div>
-                <label class="block text-[var(--text-muted)] mb-1">换仓利差增益门槛 (APR Delta %)</label>
+                <label for="cfg-min-swap-apr" class="block text-[var(--text-muted)] mb-1">Min. Swap APR Delta Gain (%)</label>
                 <input type="number" id="cfg-min-swap-apr" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
               </div>
               <div>
-                <label class="block text-[var(--text-muted)] mb-1">换仓预期最低净收益 (USD)</label>
+                <label for="cfg-min-swap-profit" class="block text-[var(--text-muted)] mb-1">Expected Min. Net Swap Profit (USD)</label>
                 <input type="number" id="cfg-min-swap-profit" step="0.01" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
               </div>
               <div>
-                <label class="block text-[var(--text-muted)] mb-1">换仓前持仓保护期 (Minutes)</label>
+                <label for="cfg-min-holding-mins" class="block text-[var(--text-muted)] mb-1">Holding Protection Window (Minutes)</label>
                 <input type="number" id="cfg-min-holding-mins" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
               </div>
             </div>
@@ -509,22 +513,22 @@
     </section>
 
     <!-- ========================================================================= -->
-    <!-- TAB 5: 全息流水 (JOURNAL)                                                 -->
+    <!-- TAB 5: AUDIT JOURNAL                                                      -->
     <!-- ========================================================================= -->
-    <section id="tab-journal" class="tab-pane hidden space-y-4">
+    <section id="tab-journal" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-journal">
       
       <div class="surface-card p-3.5 flex items-center justify-between">
         <div>
-          <h2 class="font-bold text-sm text-[var(--text-primary)]">交易与资金费流水账本</h2>
-          <p class="text-xs text-[var(--text-muted)]">真实记录开仓意图、两腿成交细节、每小时资金费入账及平仓复盘</p>
+          <h2 class="font-bold text-sm text-[var(--text-primary)]">Transaction & Funding Audit Journal</h2>
+          <p class="text-xs text-[var(--text-muted)]">Immutable audit trail of order intents, two-legged execution fills, hourly funding payments, and risk actions</p>
         </div>
         <div class="flex items-center space-x-2">
-          <select id="journal-filter-type" onchange="fetchJournalEntries()" class="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)]">
-            <option value="">全部事件 (All Events)</option>
-            <option value="Funding">资金费入账 (Funding)</option>
-            <option value="OpenFill">开仓对冲成交 (Open)</option>
-            <option value="CloseFill">平仓离场结算 (Close)</option>
-            <option value="RiskAlert">风控拦截 (Risk Alert)</option>
+          <select id="journal-filter-type" onchange="fetchJournalEntries()" aria-label="Filter Journal Events" class="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)]">
+            <option value="">All Events</option>
+            <option value="Funding">Funding Payments (Funding)</option>
+            <option value="OpenFill">Open Fills (Open)</option>
+            <option value="CloseFill">Close Settlements (Close)</option>
+            <option value="RiskAlert">Risk Interventions (Risk Alert)</option>
           </select>
         </div>
       </div>
@@ -534,18 +538,18 @@
           <table class="w-full text-left border-collapse text-xs">
             <thead>
               <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)] text-[11px] font-semibold">
-                <th class="py-2.5 px-3.5">时间 (UTC+8)</th>
-                <th class="py-2.5 px-2">类型</th>
-                <th class="py-2.5 px-2">标的</th>
-                <th class="py-2.5 px-3">成交与对冲明细</th>
-                <th class="py-2.5 px-2 text-right">名义价值</th>
-                <th class="py-2.5 px-2 text-right">净收支 (PnL / Carry)</th>
-                <th class="py-2.5 px-3 text-right">手续费</th>
+                <th class="py-2.5 px-3.5">Time (UTC+8)</th>
+                <th class="py-2.5 px-2">Type</th>
+                <th class="py-2.5 px-2">Asset</th>
+                <th class="py-2.5 px-3">Execution & Settlement Details</th>
+                <th class="py-2.5 px-2 text-right">Notional</th>
+                <th class="py-2.5 px-2 text-right">Net Flow (PnL / Carry)</th>
+                <th class="py-2.5 px-3 text-right">Fees</th>
               </tr>
             </thead>
             <tbody id="journal-table-body" class="divide-y divide-[var(--border-subtle)] font-num">
               <tr>
-                <td colspan="7" class="text-center py-10 text-[var(--text-muted)]">暂无流水记录</td>
+                <td colspan="7" class="text-center py-10 text-[var(--text-muted)]">No ledger entries recorded yet</td>
               </tr>
             </tbody>
           </table>
@@ -554,86 +558,96 @@
 
     </section>
 
+    <!-- ========================================================================= -->
+    <!-- TAB 6: SYSTEM ARCHITECTURE & METHODOLOGY                                 -->
+    <!-- ========================================================================= -->
+    <section id="tab-about" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-about">
+      <!-- Injected by about.js -->
+    </section>
+
   </main>
 
   <!-- ========================================================================= -->
-  <!-- 3. 手机端固定底部导航 (Mobile Nav)                                        -->
+  <!-- 3. Mobile Bottom Navigation                                               -->
   <!-- ========================================================================= -->
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--header-bg)] backdrop-blur-md border-t border-[var(--border-subtle)] px-2 py-1.5 flex justify-around items-center">
-    <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" class="flex flex-col items-center text-emerald-500 text-[10px] font-medium p-1">
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--header-bg)] backdrop-blur-md border-t border-[var(--border-subtle)] px-2 py-1 flex justify-around items-center" role="tablist" aria-label="Mobile Navigation">
+    <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" role="tab" aria-selected="true" class="touch-target-min flex flex-col items-center justify-center text-emerald-500 text-[10px] font-medium p-1">
       <i data-lucide="layout-dashboard" class="w-4 h-4 mb-0.5"></i>
-      <span>总览</span>
+      <span>Overview</span>
     </button>
-    <button onclick="switchTab('radar')" id="mob-btn-radar" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('radar')" id="mob-btn-radar" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
       <i data-lucide="radar" class="w-4 h-4 mb-0.5"></i>
-      <span>雷达</span>
+      <span>Radar</span>
     </button>
-    <button onclick="switchTab('positions')" id="mob-btn-positions" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1 relative">
+    <button onclick="switchTab('positions')" id="mob-btn-positions" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1 relative">
       <i data-lucide="layers" class="w-4 h-4 mb-0.5"></i>
-      <span>持仓</span>
-      <span id="mob-pos-badge" class="absolute top-0 right-1 w-2 h-2 rounded-full bg-amber-500 hidden"></span>
+      <span>Positions</span>
+      <span id="mob-pos-badge" class="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-500 hidden" aria-hidden="true"></span>
     </button>
-    <button onclick="switchTab('config')" id="mob-btn-config" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('config')" id="mob-btn-config" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
       <i data-lucide="sliders" class="w-4 h-4 mb-0.5"></i>
-      <span>调优</span>
+      <span>Config</span>
     </button>
-    <button onclick="switchTab('journal')" id="mob-btn-journal" class="flex flex-col items-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('journal')" id="mob-btn-journal" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
       <i data-lucide="file-text" class="w-4 h-4 mb-0.5"></i>
-      <span>流水</span>
+      <span>Journal</span>
+    </button>
+    <button onclick="switchTab('about')" id="mob-btn-about" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+      <i data-lucide="book-open" class="w-4 h-4 mb-0.5"></i>
+      <span>About</span>
     </button>
   </nav>
 
   <!-- ========================================================================= -->
-  <!-- 4. 模态弹窗 (Modals)                                                      -->
+  <!-- 4. Modals                                                                 -->
   <!-- ========================================================================= -->
   
-  <!-- 紧急全平确认弹窗 -->
-  <div id="modal-unwind-all" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+  <!-- Emergency Unwind Modal -->
+  <div id="modal-unwind-all" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-unwind-title">
     <div class="surface-card border border-rose-500/30 rounded-xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
-      <div class="flex items-center space-x-2 text-rose-500 font-bold text-sm">
+      <div id="modal-unwind-title" class="flex items-center space-x-2 text-rose-500 font-bold text-sm">
         <i data-lucide="alert-octagon" class="w-4 h-4"></i>
-        <span>紧急平仓确认 (Emergency Unwind)</span>
+        <span>Emergency Unwind Confirmation</span>
       </div>
-      <p class="text-xs text-[var(--text-muted)] leading-relaxed">确定要在两边交易所立即市价平掉所有活跃持仓吗？此操作将立即锁定基差盈亏并结束套利周期。</p>
+      <p class="text-xs text-[var(--text-muted)] leading-relaxed">Are you sure you want to market-close all active hedged positions across both exchanges immediately? This locks in basis PnL and terminates arbitrage cycles.</p>
       <div class="grid grid-cols-2 gap-2.5 pt-2">
-        <button onclick="closeModal('modal-unwind-all')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs">取消</button>
-        <button onclick="handleUnwind('ALL')" class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-sm">确认全部平仓</button>
+        <button onclick="closeModal('modal-unwind-all')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs transition hover:bg-slate-200 dark:hover:bg-slate-800">Cancel</button>
+        <button onclick="handleUnwind('ALL')" class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-sm transition active:scale-95">Confirm Unwind All</button>
       </div>
     </div>
   </div>
 
-  <!-- 单标的模拟下单弹窗 -->
-  <div id="modal-paper-trade" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+  <!-- Simulate Paper Trade Modal -->
+  <div id="modal-paper-trade" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-pt-title">
     <div class="surface-card border border-[var(--border-subtle)] rounded-xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
-      <div class="flex items-center space-x-2 text-emerald-500 font-bold text-sm">
+      <div id="modal-pt-title" class="flex items-center space-x-2 text-emerald-500 font-bold text-sm">
         <i data-lucide="play-circle" class="w-4 h-4"></i>
-        <span>发起模拟开仓测试 (Simulate Open)</span>
+        <span>Simulate Open Position</span>
       </div>
       <div class="space-y-2.5 text-xs">
         <div>
-          <label class="block text-[var(--text-muted)] mb-1">交易对</label>
+          <label for="modal-pt-symbol" class="block text-[var(--text-muted)] mb-1">Asset Pair</label>
           <input type="text" id="modal-pt-symbol" readonly class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-2 font-semibold font-num text-[var(--text-primary)]">
         </div>
         <div>
-          <label class="block text-[var(--text-muted)] mb-1">测试保证金规模 (USD)</label>
+          <label for="modal-pt-margin" class="block text-[var(--text-muted)] mb-1">Margin Size (USD)</label>
           <input type="number" id="modal-pt-margin" value="50" min="10" step="10" class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 pt-2">
-        <button onclick="closeModal('modal-paper-trade')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs">取消</button>
-        <button onclick="executePaperTrade('open')" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-sm">立即开仓</button>
+        <button onclick="closeModal('modal-paper-trade')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs transition hover:bg-slate-200 dark:hover:bg-slate-800">Cancel</button>
+        <button onclick="executePaperTrade('open')" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-sm transition active:scale-95">Execute Open</button>
       </div>
     </div>
   </div>
 
   <!-- Toast Container -->
-  <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
+  <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none" aria-live="polite"></div>
 
   <!-- ========================================================================= -->
-  <!-- 5. 模块化 JavaScript 入口                                                 -->
+  <!-- 5. Modular JavaScript Entrypoint                                          -->
   <!-- ========================================================================= -->
-  <script type="module" src="/js/app.js?v=2.1.0"></script>
+  <script type="module" src="/js/app.js?v=2.3.0"></script>
 
 </body>
 </html>
-
