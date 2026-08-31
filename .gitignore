@@ -19,6 +19,13 @@ vps_info.*
 *.tmp
 .DS_Store
 
+# impeccable scan output (regenerate with: impeccable detect <target> --json)
+.imp-scan.json
+.imp-static.json
+
+# Pre-redesign static frontend backup (delete once the new build is verified)
+static.bak-20260830/
+
 # IDE configuration
 .idea/
 .vscode/

@@ -22,10 +22,16 @@ type HmacSha256 = Hmac<Sha256>;
 fn create_test_state(config: Config) -> (Arc<AppState>, NamedTempFile) {
     let tmp_cfg_file = NamedTempFile::new().unwrap();
     let tmp_state_file = NamedTempFile::new().unwrap();
+    let tmp_paper_file = NamedTempFile::new().unwrap();
 
     let state_store = Arc::new(Mutex::new(
         StateStore::load_or_create(Some(tmp_state_file.path().to_path_buf())).unwrap(),
     ));
+    let paper_store = bhyper::paper::PaperTradingStore::load_or_create(
+        Some(tmp_paper_file.path().to_path_buf()),
+        500.0,
+    )
+    .unwrap();
 
     let cache = MarketDataCache::new();
     // Feed mock Binance & Hyperliquid market rates
@@ -79,7 +85,7 @@ fn create_test_state(config: Config) -> (Arc<AppState>, NamedTempFile) {
         config,
         tmp_cfg_file.path().to_path_buf(),
         state_store,
-        None,
+        Some(paper_store),
         cache,
     ));
 
@@ -335,7 +341,7 @@ async fn test_web_journal_health_and_paper_trade_actions() {
     // 3. POST /api/action/paper_trade (Open BTC)
     let payload = serde_json::json!({
         "symbol": "BTC",
-        "margin_usd": 50.0,
+        "margin_usd": 25.0,
         "action": "open"
     });
     let req_open = Request::builder()

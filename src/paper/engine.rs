@@ -93,7 +93,7 @@ impl PaperTradingStore {
         let path = path_opt.unwrap_or_else(Self::default_path);
         let journal = Arc::new(TradeJournal::new(None));
 
-        if path.exists() {
+        if path.exists() && fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read paper state from {}", path.display()))?;
             let state: PaperTradingState = serde_json::from_str(&content).with_context(|| {

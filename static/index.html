@@ -8,10 +8,16 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   
-  <!-- Google Fonts: Inter, JetBrains Mono -->
+  <!-- Google Fonts: IBM Plex Sans for UI, JetBrains Mono for numerics.
+       Plex is deliberately off the short list of faces every generated UI
+       converges on (Inter, Roboto, Geist, Plus Jakarta, Space Grotesk) while
+       keeping the technical, instrument-panel character a trading terminal
+       wants — and it sits closer to JetBrains Mono in width than Geist does.
+       JetBrains Mono stays: its slashed zero and unambiguous 1/l/I matter more
+       in a price table than matching the sans serif. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,18 +26,50 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Design Tokens & Impeccable Theming -->
-  <link rel="stylesheet" href="/css/theme.css?v=2.3.0">
+  <link rel="stylesheet" href="/css/theme.css?v=2.4.0">
   
   <script>
+    // Semantic tokens. Every color resolves through a CSS custom property so the
+    // Studio / Obsidian themes swap with a single class on <html>. Naming them
+    // here (instead of writing text-[var(--x)] at each call site) keeps the
+    // markup readable and lets the ramp be enforced in one place.
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+            sans: ['"IBM Plex Sans"', '"Noto Sans SC"', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
+          },
+          fontSize: {
+            '2xs':  ['0.6875rem', { lineHeight: '1.45' }],
+            'xs':   ['0.75rem',   { lineHeight: '1.4' }],
+            'sm':   ['0.8125rem', { lineHeight: '1.5' }],
+            'base': ['0.875rem',  { lineHeight: '1.45' }],
+            'md':   ['1rem',      { lineHeight: '1.4' }],
+            'lg':   ['1.125rem',  { lineHeight: '1.35' }],
+            '2xl':  ['1.5rem',    { lineHeight: '1.15' }]
           },
           colors: {
+            canvas:   'var(--bg-canvas)',
+            surface:  'var(--bg-surface)',
+            elevated: 'var(--bg-elevated)',
+            subtle:   'var(--bg-subtle)',
+            hover:    'var(--bg-hover)',
+            header:   'var(--header-bg)',
+            inverse:  'var(--bg-inverse)',
+            scrim:    'var(--scrim)',
+            edge: {
+              DEFAULT: 'var(--border-subtle)',
+              strong:  'var(--border-strong)',
+              inverse: 'var(--border-inverse)'
+            },
+            ink: {
+              DEFAULT: 'var(--text-primary)',
+              soft:    'var(--text-secondary)',
+              mute:    'var(--text-muted)',
+              inverse: 'var(--text-inverse)'
+            },
             brand: {
               50: '#ecfdf5',
               500: '#10b981',
@@ -45,12 +83,12 @@
   </script>
 </head>
 
-<body class="min-h-screen flex flex-col custom-scrollbar text-[13px] select-none antialiased">
+<body class="min-h-screen flex flex-col custom-scrollbar text-sm select-none antialiased">
 
   <!-- ========================================================================= -->
   <!-- 1. Terminal Header                                                        -->
   <!-- ========================================================================= -->
-  <header class="sticky top-0 z-40 backdrop-blur-md border-b border-[var(--border-subtle)] bg-[var(--header-bg)] px-3 sm:px-5 py-2.5 transition-colors">
+  <header class="sticky top-0 z-40 backdrop-blur-md border-b border-edge bg-header px-3 sm:px-5 py-2.5 transition-colors">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
       
       <!-- Brand & Status Pill -->
@@ -60,46 +98,46 @@
         </div>
         <div>
           <div class="flex items-center space-x-2">
-            <span class="font-bold text-[14px] tracking-tight text-[var(--text-primary)]">BHyper</span>
-            <span class="text-[10px] font-semibold text-[var(--text-muted)] tracking-wider uppercase">Terminal</span>
-            <span id="badge-version" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-num font-semibold border border-emerald-500/30">v0.2.0</span>
+            <span class="font-bold text-base tracking-tight text-ink">BHyper</span>
+            <span class="text-2xs font-semibold text-ink-mute tracking-wider uppercase">Terminal</span>
+            <span id="badge-version" class="text-2xs px-1.5 py-0.2 rounded bg-subtle text-ink-soft font-num font-semibold border border-edge">v0.2.0</span>
           </div>
-          <div class="flex items-center space-x-2 text-[11px] text-[var(--text-muted)] mt-0.5">
+          <div class="flex items-center space-x-2 text-2xs text-ink-mute mt-0.5">
             <span id="status-indicator" class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block" aria-hidden="true"></span>
-            <span id="status-text" class="font-semibold text-emerald-500 text-[10px]">WS LIVE</span>
-            <span class="text-slate-300 dark:text-slate-700" aria-hidden="true">•</span>
-            <span id="tg-user-badge" class="font-medium text-[11px]">Terminal</span>
-            <span class="text-slate-300 dark:text-slate-700" aria-hidden="true">•</span>
-            <span class="font-num text-[11px]"><span id="header-cache-count" class="font-semibold text-emerald-500">206</span> Markets</span>
+            <span id="status-text" class="font-semibold text-emerald-500 text-2xs">WS LIVE</span>
+            <span class="text-edge-strong" aria-hidden="true">•</span>
+            <span id="tg-user-badge" class="font-medium text-2xs">Terminal</span>
+            <span class="text-edge-strong" aria-hidden="true">•</span>
+            <span class="font-num text-2xs"><span id="header-cache-count" class="font-semibold text-ink">206</span> Markets</span>
           </div>
         </div>
       </div>
 
       <!-- Desktop Nav Tabs -->
-      <nav class="hidden md:flex items-center space-x-1 bg-slate-200/50 dark:bg-[#0f1728] p-1 rounded-xl border border-[var(--border-subtle)]" role="tablist" aria-label="Terminal Views">
-        <button onclick="switchTab('dashboard')" id="nav-btn-dashboard" role="tab" aria-selected="true" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm">
+      <nav class="hidden md:flex items-center space-x-1 bg-subtle p-1 rounded-xl border border-edge" role="tablist" aria-label="Terminal Views">
+        <button onclick="switchTab('dashboard')" id="nav-btn-dashboard" role="tab" aria-selected="true" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
           <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
           <span>Overview</span>
         </button>
-        <button onclick="switchTab('radar')" id="nav-btn-radar" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('radar')" id="nav-btn-radar" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent">
           <i data-lucide="radar" class="w-3.5 h-3.5"></i>
           <span>Opportunity Radar</span>
-          <span id="radar-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300">206</span>
+          <span id="radar-count-badge" class="px-1.5 py-0.2 rounded-full text-2xs font-num bg-subtle text-ink-soft">206</span>
         </button>
-        <button onclick="switchTab('positions')" id="nav-btn-positions" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('positions')" id="nav-btn-positions" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent">
           <i data-lucide="layers" class="w-3.5 h-3.5"></i>
           <span>Positions</span>
-          <span id="pos-count-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-num bg-amber-500/20 text-amber-500 font-bold">0</span>
+          <span id="pos-count-badge" class="px-1.5 py-0.2 rounded-full text-2xs font-num bg-amber-500/20 text-amber-500 font-bold">0</span>
         </button>
-        <button onclick="switchTab('config')" id="nav-btn-config" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('config')" id="nav-btn-config" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent">
           <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
           <span>Strategy Config</span>
         </button>
-        <button onclick="switchTab('journal')" id="nav-btn-journal" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('journal')" id="nav-btn-journal" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent">
           <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
           <span>Audit Journal</span>
         </button>
-        <button onclick="switchTab('about')" id="nav-btn-about" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+        <button onclick="switchTab('about')" id="nav-btn-about" role="tab" aria-selected="false" class="tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent">
           <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
           <span>Architecture</span>
         </button>
@@ -107,17 +145,17 @@
 
       <!-- Right Controls: Clock & Theme Toggle -->
       <div class="flex items-center space-x-2.5">
-        <button onclick="toggleTheme()" id="theme-toggle-btn" aria-label="Toggle Dark/Light Theme" title="Toggle Theme" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
-          <i data-lucide="moon" id="theme-icon" class="w-3.5 h-3.5 text-slate-400"></i>
+        <button onclick="toggleTheme()" id="theme-toggle-btn" aria-label="Toggle Dark/Light Theme" title="Toggle Theme" class="w-8 h-8 rounded-lg bg-elevated hover:bg-hover text-ink border border-edge flex items-center justify-center transition active:scale-95">
+          <i data-lucide="moon" id="theme-icon" class="w-3.5 h-3.5 text-ink-mute"></i>
         </button>
 
-        <button onclick="fetchInitialData()" aria-label="Refresh Market Snapshot" title="Refresh Snapshot" class="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] hover:bg-slate-200 dark:hover:bg-slate-800 text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center transition active:scale-95">
-          <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-400"></i>
+        <button onclick="fetchInitialData()" aria-label="Refresh Market Snapshot" title="Refresh Snapshot" class="w-8 h-8 rounded-lg bg-elevated hover:bg-hover text-ink border border-edge flex items-center justify-center transition active:scale-95">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-ink-mute"></i>
         </button>
 
-        <div class="text-right text-[11px] hidden sm:block border-l border-[var(--border-subtle)] pl-3">
-          <div id="clock-utc" class="font-num font-medium text-[var(--text-primary)]">--:--:-- UTC+8</div>
-          <div id="funding-countdown" class="font-num text-cyan-600 dark:text-cyan-400 text-[10px]">Settlement in --m</div>
+        <div class="text-right text-sm hidden sm:block border-l border-edge pl-3">
+          <div id="clock-utc" class="font-num font-semibold text-ink">--:--:-- UTC+8</div>
+          <div id="funding-countdown" class="font-num font-medium text-cyan-600 dark:text-cyan-400">Settlement in --m</div>
         </div>
       </div>
 
@@ -134,44 +172,44 @@
       
       <!-- Card 1: Total Equity -->
       <div class="surface-card p-4 transition-colors">
-        <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
+        <div class="text-ink-soft text-xs font-medium flex justify-between items-center">
           <span>Net Cross-Exchange Equity</span>
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
             <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
           </div>
         </div>
-        <div id="stat-total-equity" class="text-2xl font-num font-bold text-[var(--text-primary)] mt-1 tracking-tight">$500.00</div>
-        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
-          <span>Binance: <b id="stat-bn-equity" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
-          <span>Hyperliquid: <b id="stat-hl-equity" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
+        <div id="stat-total-equity" class="text-2xl font-num font-bold text-ink mt-1 tracking-tight">$500.00</div>
+        <div class="text-2xs font-num text-ink-mute mt-2 flex justify-between items-center border-t border-edge pt-2">
+          <span>Binance: <b id="stat-bn-equity" class="text-ink font-semibold">$250.00</b></span>
+          <span>Hyperliquid: <b id="stat-hl-equity" class="text-ink font-semibold">$250.00</b></span>
         </div>
       </div>
 
       <!-- Card 2: Realized PnL -->
       <div class="surface-card p-4 transition-colors">
-        <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
+        <div class="text-ink-soft text-xs font-medium flex justify-between items-center">
           <span>Cumulative Realized PnL</span>
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
             <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
           </div>
         </div>
         <div id="stat-realized-pnl" class="text-2xl font-num font-bold text-emerald-500 mt-1 tracking-tight">+$0.0000</div>
-        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
-          <span>Win Rate: <b id="stat-win-rate" class="text-emerald-500 font-semibold">100.0%</b></span>
-          <span><b id="stat-trade-count" class="text-[var(--text-primary)] font-semibold">0</b> Closed</span>
+        <div class="text-2xs font-num text-ink-mute mt-2 flex justify-between items-center border-t border-edge pt-2">
+          <span>Win Rate: <b id="stat-win-rate" class="text-ink font-semibold">100.0%</b></span>
+          <span><b id="stat-trade-count" class="text-ink font-semibold">0</b> Closed</span>
         </div>
       </div>
 
       <!-- Card 3: Net Funding Carry -->
       <div class="surface-card p-4 transition-colors">
-        <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
+        <div class="text-ink-soft text-xs font-medium flex justify-between items-center">
           <span>Net Funding Carry Income</span>
           <div class="w-6 h-6 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-500">
             <i data-lucide="coins" class="w-3.5 h-3.5"></i>
           </div>
         </div>
         <div id="stat-funding-income" class="text-2xl font-num font-bold text-cyan-500 mt-1 tracking-tight">+$0.0000</div>
-        <div class="text-[10px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
+        <div class="text-2xs font-num text-ink-mute mt-2 flex justify-between items-center border-t border-edge pt-2">
           <span>Gross <span id="stat-gross-funding" class="text-cyan-500 font-medium">+$0.00</span> · Fees <span id="stat-total-fees" class="text-rose-500 font-medium">-$0.00</span></span>
           <span id="stat-hourly-runrate" class="text-cyan-600 dark:text-cyan-400 font-medium">~$0.00/h</span>
         </div>
@@ -179,7 +217,7 @@
 
       <!-- Card 4: Active Positions & Margin Utilization -->
       <div class="surface-card p-4 transition-colors">
-        <div class="text-[var(--text-secondary)] text-xs font-medium flex justify-between items-center">
+        <div class="text-ink-soft text-xs font-medium flex justify-between items-center">
           <span>Active Pairs & Margin</span>
           <div class="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
             <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
@@ -187,11 +225,11 @@
         </div>
         <div class="flex items-baseline space-x-2 mt-1">
           <span id="stat-active-pairs" class="text-2xl font-num font-bold text-amber-500 tracking-tight">0 Pairs</span>
-          <span id="stat-margin-util" class="text-xs font-num text-[var(--text-muted)] font-medium">(0.0% Used)</span>
+          <span id="stat-margin-util" class="text-xs font-num text-ink-mute font-medium">(0.0% Used)</span>
         </div>
-        <div class="text-[11px] font-num text-[var(--text-muted)] mt-2 flex justify-between items-center border-t border-[var(--border-subtle)] pt-2">
+        <div class="text-2xs font-num text-ink-mute mt-2 flex justify-between items-center border-t border-edge pt-2">
           <span>Liq. Buffer: <b class="text-emerald-500 font-semibold">>50%</b></span>
-          <span id="stat-health-badge" class="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/25">HEALTHY</span>
+          <span id="stat-health-badge" class="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-2xs font-semibold border border-emerald-500/25">HEALTHY</span>
         </div>
       </div>
 
@@ -202,73 +240,73 @@
     <!-- ========================================================================= -->
     <section id="tab-dashboard" class="tab-pane space-y-4" role="tabpanel" aria-labelledby="nav-btn-dashboard">
       
-      <!-- Dual Exchange Margin Health Gauge -->
-      <div class="surface-card p-4">
-        <div class="flex items-center justify-between mb-3">
-          <div class="flex items-center space-x-2">
-            <span class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-1.5">
-              <i data-lucide="shield" class="w-4 h-4 text-emerald-500"></i>
-              <span>Cross-Exchange Margin Health & Capital Balance</span>
-            </span>
-          </div>
-          <span id="rebalance-status-badge" class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/25">Balanced</span>
+      <!-- Dual Exchange Margin Health Gauge.
+           Header sits on the canvas; the two exchange panels are siblings, not
+           boxes inside a box. -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-xs text-ink flex items-center space-x-1.5">
+            <i data-lucide="shield" class="w-4 h-4 text-ink-soft"></i>
+            <span>Cross-Exchange Margin Health &amp; Capital Balance</span>
+          </span>
+          <span id="rebalance-status-badge" class="px-2 py-0.5 rounded text-2xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/25">Balanced</span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <!-- Binance Box -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2">
+          <div class="surface-card p-4 space-y-2">
             <div class="flex justify-between text-xs font-medium">
               <span class="font-semibold text-amber-500 flex items-center space-x-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                 <span>Binance Futures (USDT-M)</span>
               </span>
-              <span id="bn-health-util" class="font-num text-[var(--text-primary)] font-medium">Allocated: $0.00 (0.0%)</span>
+              <span id="bn-health-util" class="font-num text-ink font-medium">Allocated: $0.00 (0.0%)</span>
             </div>
-            <div class="w-full bg-slate-300 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+            <div class="w-full bg-subtle h-1.5 rounded-full overflow-hidden">
               <div id="bn-util-bar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
-            <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
-              <span>Free Margin: <b id="bn-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
+            <div class="flex justify-between text-2xs font-num text-ink-mute">
+              <span>Free Margin: <b id="bn-free-margin" class="text-ink font-semibold">$250.00</b></span>
               <span>Liq. Distance: <b id="bn-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
             </div>
           </div>
 
           <!-- Hyperliquid Box -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2">
+          <div class="surface-card p-4 space-y-2">
             <div class="flex justify-between text-xs font-medium">
               <span class="font-semibold text-cyan-500 flex items-center space-x-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
                 <span>Hyperliquid L1 (USDC)</span>
               </span>
-              <span id="hl-health-util" class="font-num text-[var(--text-primary)] font-medium">Allocated: $0.00 (0.0%)</span>
+              <span id="hl-health-util" class="font-num text-ink font-medium">Allocated: $0.00 (0.0%)</span>
             </div>
-            <div class="w-full bg-slate-300 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+            <div class="w-full bg-subtle h-1.5 rounded-full overflow-hidden">
               <div id="hl-util-bar" class="bg-cyan-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
-            <div class="flex justify-between text-[11px] font-num text-[var(--text-muted)]">
-              <span>Free Margin: <b id="hl-free-margin" class="text-[var(--text-primary)] font-semibold">$250.00</b></span>
+            <div class="flex justify-between text-2xs font-num text-ink-mute">
+              <span>Free Margin: <b id="hl-free-margin" class="text-ink font-semibold">$250.00</b></span>
               <span>Liq. Distance: <b id="hl-liq-dist" class="text-emerald-500 font-semibold">>50%</b></span>
             </div>
           </div>
         </div>
 
-        <div id="rebalance-advisory-box" class="mt-2.5 text-xs bg-[var(--bg-elevated)] p-2.5 rounded-lg border border-[var(--border-subtle)] flex items-center justify-between text-[var(--text-muted)]">
+        <div id="rebalance-advisory-box" class="surface-card text-xs p-3 flex items-center justify-between text-ink-mute">
           <span id="rebalance-advisory-text" class="flex items-center space-x-1.5">
-            <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+            <i data-lucide="info" class="w-3.5 h-3.5 text-ink-mute"></i>
             <span>Cross-exchange margin allocation is optimal. No transfer needed.</span>
           </span>
-          <span class="text-[11px] font-num text-[var(--text-muted)]">Rebalance Threshold: 40.0%</span>
+          <span class="font-num text-ink-mute">Rebalance Threshold: 40.0%</span>
         </div>
       </div>
 
       <!-- Real-Time Positions Summary -->
       <div class="surface-card p-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-2">
-            <i data-lucide="layers" class="w-4 h-4 text-emerald-500"></i>
+          <h3 class="font-semibold text-xs text-ink flex items-center space-x-2">
+            <i data-lucide="layers" class="w-4 h-4 text-ink-soft"></i>
             <span>Active Hedged Arbitrage Positions</span>
           </h3>
-          <button onclick="switchTab('positions')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
+          <button onclick="switchTab('positions')" class="text-xs text-ink-soft hover:text-ink hover:underline font-medium flex items-center space-x-1">
             <span>Manage Details</span>
             <i data-lucide="chevron-right" class="w-3 h-3"></i>
           </button>
@@ -281,11 +319,11 @@
       <!-- Top 5 Spread Alpha Quickboard -->
       <div class="surface-card p-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-xs text-[var(--text-primary)] flex items-center space-x-2">
-            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500"></i>
+          <h3 class="font-semibold text-xs text-ink flex items-center space-x-2">
+            <i data-lucide="trending-up" class="w-4 h-4 text-ink-soft"></i>
             <span>Top Spread Alpha Opportunities</span>
           </h3>
-          <button onclick="switchTab('radar')" class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-medium flex items-center space-x-1">
+          <button onclick="switchTab('radar')" class="text-xs text-ink-soft hover:text-ink hover:underline font-medium flex items-center space-x-1">
             <span>View All Markets</span>
             <i data-lucide="chevron-right" class="w-3 h-3"></i>
           </button>
@@ -308,16 +346,16 @@
           
           <!-- Search Bar -->
           <div class="relative flex-1 max-w-md">
-            <i data-lucide="search" class="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2"></i>
-            <input type="text" id="radar-search" oninput="filterRadarTable()" placeholder="Search symbol (e.g. BTC, SOL, SUI, DOGE)... Press / to focus" aria-label="Search Markets" class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-emerald-500 transition">
+            <i data-lucide="search" class="w-3.5 h-3.5 text-ink-mute absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="radar-search" oninput="filterRadarTable()" placeholder="Search symbol (e.g. BTC, SOL, SUI, DOGE)... Press / to focus" aria-label="Search Markets" class="w-full bg-elevated border border-edge rounded-lg pl-8 pr-3 py-1.5 text-xs text-ink placeholder-ink-mute focus:border-emerald-500 transition">
           </div>
 
           <!-- Quick Filters -->
           <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Radar Filters">
-            <button onclick="setRadarFilter('all')" id="rf-btn-all" aria-pressed="true" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition active:scale-95">All (<span id="count-all">0</span>)</button>
-            <button onclick="setRadarFilter('high_apr')" id="rf-btn-high_apr" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">>50% APR</button>
-            <button onclick="setRadarFilter('pos_cashflow')" id="rf-btn-pos_cashflow" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">1h Net Cashflow > 0</button>
-            <button onclick="setRadarFilter('liquid')" id="rf-btn-liquid" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95">High Liquidity (OI > $1M)</button>
+            <button onclick="setRadarFilter('all')" id="rf-btn-all" aria-pressed="true" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 transition active:scale-95">All (<span id="count-all">0</span>)</button>
+            <button onclick="setRadarFilter('high_apr')" id="rf-btn-high_apr" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-elevated text-ink-mute hover:text-ink border border-transparent transition active:scale-95">>50% APR</button>
+            <button onclick="setRadarFilter('pos_cashflow')" id="rf-btn-pos_cashflow" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-elevated text-ink-mute hover:text-ink border border-transparent transition active:scale-95">1h Net Cashflow > 0</button>
+            <button onclick="setRadarFilter('liquid')" id="rf-btn-liquid" aria-pressed="false" class="rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-elevated text-ink-mute hover:text-ink border border-transparent transition active:scale-95">High Liquidity (OI > $1M)</button>
           </div>
 
         </div>
@@ -328,10 +366,10 @@
         <div class="overflow-x-auto custom-scrollbar">
           <table class="w-full text-left border-collapse text-xs">
             <thead>
-              <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)] text-[11px] font-semibold">
+              <tr class="border-b border-edge bg-elevated text-ink-mute text-xs font-semibold">
                 <th class="py-2.5 px-3.5">Asset</th>
-                <th class="py-2.5 px-3">Binance (8h)</th>
-                <th class="py-2.5 px-3">Hyperliquid (1h)</th>
+                <th class="py-2.5 px-3"><span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true"></span>Binance (8h)</span></th>
+                <th class="py-2.5 px-3"><span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-cyan-500" aria-hidden="true"></span>Hyperliquid (1h)</span></th>
                 <th class="py-2.5 px-3 text-right">Net Spread (APR)</th>
                 <th class="py-2.5 px-3 text-center">Hedged Legs</th>
                 <th class="py-2.5 px-2 text-right">Break-Even</th>
@@ -341,11 +379,11 @@
                 <th class="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody id="radar-table-body" class="divide-y divide-[var(--border-subtle)] font-num">
+            <tbody id="radar-table-body" class="divide-y divide-edge font-num">
               <tr>
-                <td colspan="10" class="text-center py-12 text-[var(--text-muted)]">
+                <td colspan="10" class="text-center py-12 text-ink-mute">
                   <div class="flex flex-col items-center justify-center space-y-2">
-                    <i data-lucide="loader" class="w-5 h-5 text-emerald-500 animate-spin"></i>
+                    <i data-lucide="loader" class="w-5 h-5 text-ink-soft animate-spin"></i>
                     <span class="text-xs">Connecting to real-time orderbook streams & calculating spread matrix...</span>
                   </div>
                 </td>
@@ -365,8 +403,8 @@
       <!-- Top Actions -->
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="font-bold text-sm text-[var(--text-primary)]">Active Hedged Position Tracking</h2>
-          <p class="text-xs text-[var(--text-muted)]">Real-time monitoring of two-legged delta neutrality, basis PnL, cumulative funding, and holding duration</p>
+          <h2 class="font-bold text-sm text-ink">Active Hedged Position Tracking</h2>
+          <p class="text-xs text-ink-mute">Real-time monitoring of two-legged delta neutrality, basis PnL, cumulative funding, and holding duration</p>
         </div>
         <div class="flex items-center space-x-2">
           <button onclick="openModal('modal-unwind-all')" class="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-semibold text-xs border border-rose-500/25 transition flex items-center space-x-1.5 active:scale-95">
@@ -388,120 +426,121 @@
     <!-- ========================================================================= -->
     <section id="tab-config" class="tab-pane hidden space-y-4" role="tabpanel" aria-labelledby="nav-btn-config">
       
-      <div class="surface-card p-4 sm:p-5 space-y-4">
-        
-        <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-          <div>
-            <h2 class="font-bold text-sm text-[var(--text-primary)] flex items-center space-x-2">
-              <i data-lucide="sliders" class="w-4 h-4 text-emerald-500"></i>
-              <span>Execution & Strategy Parameter Tuning</span>
-            </h2>
-            <p class="text-xs text-[var(--text-muted)] mt-0.5">Parameters hot-reload atomically to disk and take effect immediately in memory without restarting daemon</p>
-          </div>
-          <button onclick="saveConfigToServer()" class="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-xs shadow-sm transition flex items-center space-x-1.5 active:scale-95">
-            <i data-lucide="save" class="w-3.5 h-3.5"></i>
-            <span>Save & Apply</span>
-          </button>
+      <!-- The four parameter groups are sibling cards on the canvas. They used
+           to be bordered boxes inside a bordered card, which added a layer of
+           depth that carried no meaning. -->
+      <div class="surface-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="font-bold text-sm text-ink flex items-center space-x-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-ink-soft"></i>
+            <span>Execution &amp; Strategy Parameter Tuning</span>
+          </h2>
+          <p class="text-xs text-ink-mute mt-0.5">Parameters hot-reload atomically to disk and take effect immediately in memory without restarting daemon</p>
         </div>
+        <button onclick="saveConfigToServer()" class="shrink-0 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-xs transition flex items-center space-x-1.5 active:scale-95">
+          <i data-lucide="save" class="w-3.5 h-3.5"></i>
+          <span>Save &amp; Apply</span>
+        </button>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
-          
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+
           <!-- 1. Trigger Thresholds -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
-            <div class="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
+          <div class="surface-card p-4 space-y-2.5">
+            <div class="font-semibold text-ink flex items-center space-x-1.5">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               <span>Arbitrage Entry & Exit Thresholds</span>
             </div>
             <div>
-              <label for="cfg-min-open-apr" class="block text-[var(--text-muted)] mb-1">Min. Entry Net Spread APR (%)</label>
-              <input type="number" id="cfg-min-open-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-min-open-apr" class="block text-ink-mute mb-1">Min. Entry Net Spread APR (%)</label>
+              <input type="number" id="cfg-min-open-apr" step="0.5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div>
-              <label for="cfg-min-carry-apr" class="block text-[var(--text-muted)] mb-1">24h+ Carry Mode Min APR (%)</label>
-              <input type="number" id="cfg-min-carry-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-min-carry-apr" class="block text-ink-mute mb-1">24h+ Carry Mode Min APR (%)</label>
+              <input type="number" id="cfg-min-carry-apr" step="0.5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div>
-              <label for="cfg-min-exit-apr" class="block text-[var(--text-muted)] mb-1">Decay Exit Threshold APR (%)</label>
-              <input type="number" id="cfg-min-exit-apr" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-min-exit-apr" class="block text-ink-mute mb-1">Decay Exit Threshold APR (%)</label>
+              <input type="number" id="cfg-min-exit-apr" step="0.5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
           </div>
 
           <!-- 2. Position & Margin Management -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
-            <div class="font-semibold text-[var(--text-primary)] flex items-center justify-between">
+          <div class="surface-card p-4 space-y-2.5">
+            <div class="font-semibold text-ink flex items-center justify-between">
               <div class="flex items-center space-x-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
                 <span>Position Sizing & Leverage</span>
               </div>
-              <label class="flex items-center space-x-1.5 cursor-pointer text-[11px] font-medium text-cyan-400">
-                <input type="checkbox" id="cfg-dynamic-sizing" class="rounded text-cyan-500 focus:ring-0">
+              <label class="flex items-center space-x-1.5 cursor-pointer text-2xs font-medium text-ink-soft">
+                <input type="checkbox" id="cfg-dynamic-sizing" class="rounded text-ink focus:ring-0">
                 <span>Adaptive Sizing</span>
               </label>
             </div>
             <div>
-              <label for="cfg-max-pos-usd" class="block text-[var(--text-muted)] mb-1">Max Position Cap per Pair (USD)</label>
-              <input type="number" id="cfg-max-pos-usd" step="10" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-max-pos-usd" class="block text-ink-mute mb-1">Max Position Cap per Pair (USD)</label>
+              <input type="number" id="cfg-max-pos-usd" step="10" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div>
-              <label for="cfg-safety-buffer" class="block text-[var(--text-muted)] mb-1">Liquidation Safety Buffer (%)</label>
-              <input type="number" id="cfg-safety-buffer" min="5" max="40" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-safety-buffer" class="block text-ink-mute mb-1">Liquidation Safety Buffer (%)</label>
+              <input type="number" id="cfg-safety-buffer" min="5" max="40" step="5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label for="cfg-max-active-pos" class="block text-[var(--text-muted)] mb-1">Max Active Slots</label>
-                <input type="number" id="cfg-max-active-pos" min="1" max="10" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+                <label for="cfg-max-active-pos" class="block text-ink-mute mb-1">Max Active Slots</label>
+                <input type="number" id="cfg-max-active-pos" min="1" max="10" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
               </div>
               <div>
-                <label for="cfg-leverage" class="block text-[var(--text-muted)] mb-1">Leverage Multiplier</label>
-                <input type="number" id="cfg-leverage" min="1" max="10" step="0.5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+                <label for="cfg-leverage" class="block text-ink-mute mb-1">Leverage Multiplier</label>
+                <input type="number" id="cfg-leverage" min="1" max="10" step="0.5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
               </div>
             </div>
           </div>
 
           <!-- 3. Risk Sentinels -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5">
-            <div class="font-semibold text-[var(--text-primary)] flex items-center space-x-1.5">
+          <div class="surface-card p-4 space-y-2.5">
+            <div class="font-semibold text-ink flex items-center space-x-1.5">
               <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
               <span>Deterministic Risk Sentinels</span>
             </div>
             <div>
-              <label for="cfg-stop-loss-bps" class="block text-[var(--text-muted)] mb-1">Hard Basis Stop-Loss (bps)</label>
-              <input type="number" id="cfg-stop-loss-bps" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-stop-loss-bps" class="block text-ink-mute mb-1">Hard Basis Stop-Loss (bps)</label>
+              <input type="number" id="cfg-stop-loss-bps" step="5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div>
-              <label for="cfg-take-profit-bps" class="block text-[var(--text-muted)] mb-1">Convergence Take-Profit (bps)</label>
-              <input type="number" id="cfg-take-profit-bps" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-take-profit-bps" class="block text-ink-mute mb-1">Convergence Take-Profit (bps)</label>
+              <input type="number" id="cfg-take-profit-bps" step="5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
             <div>
-              <label for="cfg-max-holding-hours" class="block text-[var(--text-muted)] mb-1">Max Holding Duration (Hours)</label>
-              <input type="number" id="cfg-max-holding-hours" step="1" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+              <label for="cfg-max-holding-hours" class="block text-ink-mute mb-1">Max Holding Duration (Hours)</label>
+              <input type="number" id="cfg-max-holding-hours" step="1" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
             </div>
           </div>
 
           <!-- 4. Dynamic Opportunity Cost Swapper -->
-          <div class="bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-subtle)] space-y-2.5 md:col-span-2 lg:col-span-3">
-            <div class="font-semibold text-[var(--text-primary)] flex items-center justify-between">
+          <div class="surface-card p-4 space-y-2.5 md:col-span-2 lg:col-span-3">
+            <div class="font-semibold text-ink flex items-center justify-between">
               <div class="flex items-center space-x-1.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                 <span>Dynamic Opportunity Cost Swapper Engine</span>
               </div>
-              <label class="flex items-center space-x-1.5 cursor-pointer text-[11px] font-medium text-purple-400">
-                <input type="checkbox" id="cfg-auto-rotation" class="rounded text-purple-500 focus:ring-0">
+              <label class="flex items-center space-x-1.5 cursor-pointer text-2xs font-medium text-amber-500">
+                <input type="checkbox" id="cfg-auto-rotation" class="rounded text-amber-500 focus:ring-0">
                 <span>Enable High-Alpha Capital Rotation</span>
               </label>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
               <div>
-                <label for="cfg-min-swap-apr" class="block text-[var(--text-muted)] mb-1">Min. Swap APR Delta Gain (%)</label>
-                <input type="number" id="cfg-min-swap-apr" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+                <label for="cfg-min-swap-apr" class="block text-ink-mute mb-1">Min. Swap APR Delta Gain (%)</label>
+                <input type="number" id="cfg-min-swap-apr" step="5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
               </div>
               <div>
-                <label for="cfg-min-swap-profit" class="block text-[var(--text-muted)] mb-1">Expected Min. Net Swap Profit (USD)</label>
-                <input type="number" id="cfg-min-swap-profit" step="0.01" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+                <label for="cfg-min-swap-profit" class="block text-ink-mute mb-1">Expected Min. Net Swap Profit (USD)</label>
+                <input type="number" id="cfg-min-swap-profit" step="0.01" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
               </div>
               <div>
-                <label for="cfg-min-holding-mins" class="block text-[var(--text-muted)] mb-1">Holding Protection Window (Minutes)</label>
-                <input type="number" id="cfg-min-holding-mins" step="5" class="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+                <label for="cfg-min-holding-mins" class="block text-ink-mute mb-1">Holding Protection Window (Minutes)</label>
+                <input type="number" id="cfg-min-holding-mins" step="5" class="w-full bg-surface border border-edge rounded-lg p-2 font-num font-semibold text-ink">
               </div>
             </div>
           </div>
@@ -519,11 +558,11 @@
       
       <div class="surface-card p-3.5 flex items-center justify-between">
         <div>
-          <h2 class="font-bold text-sm text-[var(--text-primary)]">Transaction & Funding Audit Journal</h2>
-          <p class="text-xs text-[var(--text-muted)]">Immutable audit trail of order intents, two-legged execution fills, hourly funding payments, and risk actions</p>
+          <h2 class="font-bold text-sm text-ink">Transaction & Funding Audit Journal</h2>
+          <p class="text-xs text-ink-mute">Immutable audit trail of order intents, two-legged execution fills, hourly funding payments, and risk actions</p>
         </div>
         <div class="flex items-center space-x-2">
-          <select id="journal-filter-type" onchange="fetchJournalEntries()" aria-label="Filter Journal Events" class="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)]">
+          <select id="journal-filter-type" onchange="fetchJournalEntries()" aria-label="Filter Journal Events" class="bg-elevated border border-edge rounded-lg px-2.5 py-1 text-xs text-ink">
             <option value="">All Events</option>
             <option value="Funding">Funding Payments (Funding)</option>
             <option value="OpenFill">Open Fills (Open)</option>
@@ -537,7 +576,7 @@
         <div class="overflow-x-auto custom-scrollbar">
           <table class="w-full text-left border-collapse text-xs">
             <thead>
-              <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)] text-[11px] font-semibold">
+              <tr class="border-b border-edge bg-elevated text-ink-mute text-xs font-semibold">
                 <th class="py-2.5 px-3.5">Time (UTC+8)</th>
                 <th class="py-2.5 px-2">Type</th>
                 <th class="py-2.5 px-2">Asset</th>
@@ -547,9 +586,9 @@
                 <th class="py-2.5 px-3 text-right">Fees</th>
               </tr>
             </thead>
-            <tbody id="journal-table-body" class="divide-y divide-[var(--border-subtle)] font-num">
+            <tbody id="journal-table-body" class="divide-y divide-edge font-num">
               <tr>
-                <td colspan="7" class="text-center py-10 text-[var(--text-muted)]">No ledger entries recorded yet</td>
+                <td colspan="7" class="text-center py-10 text-ink-mute">No ledger entries recorded yet</td>
               </tr>
             </tbody>
           </table>
@@ -570,29 +609,29 @@
   <!-- ========================================================================= -->
   <!-- 3. Mobile Bottom Navigation                                               -->
   <!-- ========================================================================= -->
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--header-bg)] backdrop-blur-md border-t border-[var(--border-subtle)] px-2 py-1 flex justify-around items-center" role="tablist" aria-label="Mobile Navigation">
-    <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" role="tab" aria-selected="true" class="touch-target-min flex flex-col items-center justify-center text-emerald-500 text-[10px] font-medium p-1">
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-header backdrop-blur-md border-t border-edge px-2 py-1 flex justify-around items-center" role="tablist" aria-label="Mobile Navigation">
+    <button onclick="switchTab('dashboard')" id="mob-btn-dashboard" role="tab" aria-selected="true" class="touch-target-min flex flex-col items-center justify-center text-emerald-500 text-2xs font-medium p-1">
       <i data-lucide="layout-dashboard" class="w-4 h-4 mb-0.5"></i>
       <span>Overview</span>
     </button>
-    <button onclick="switchTab('radar')" id="mob-btn-radar" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('radar')" id="mob-btn-radar" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1">
       <i data-lucide="radar" class="w-4 h-4 mb-0.5"></i>
       <span>Radar</span>
     </button>
-    <button onclick="switchTab('positions')" id="mob-btn-positions" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1 relative">
+    <button onclick="switchTab('positions')" id="mob-btn-positions" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1 relative">
       <i data-lucide="layers" class="w-4 h-4 mb-0.5"></i>
       <span>Positions</span>
       <span id="mob-pos-badge" class="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-500 hidden" aria-hidden="true"></span>
     </button>
-    <button onclick="switchTab('config')" id="mob-btn-config" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('config')" id="mob-btn-config" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1">
       <i data-lucide="sliders" class="w-4 h-4 mb-0.5"></i>
       <span>Config</span>
     </button>
-    <button onclick="switchTab('journal')" id="mob-btn-journal" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('journal')" id="mob-btn-journal" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1">
       <i data-lucide="file-text" class="w-4 h-4 mb-0.5"></i>
       <span>Journal</span>
     </button>
-    <button onclick="switchTab('about')" id="mob-btn-about" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1">
+    <button onclick="switchTab('about')" id="mob-btn-about" role="tab" aria-selected="false" class="touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1">
       <i data-lucide="book-open" class="w-4 h-4 mb-0.5"></i>
       <span>About</span>
     </button>
@@ -603,40 +642,40 @@
   <!-- ========================================================================= -->
   
   <!-- Emergency Unwind Modal -->
-  <div id="modal-unwind-all" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-unwind-title">
-    <div class="surface-card border border-rose-500/30 rounded-xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
+  <div id="modal-unwind-all" class="fixed inset-0 z-50 bg-scrim backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-unwind-title">
+    <div class="surface-card border border-rose-500/30 rounded-xl max-w-sm w-full p-5 space-y-3">
       <div id="modal-unwind-title" class="flex items-center space-x-2 text-rose-500 font-bold text-sm">
         <i data-lucide="alert-octagon" class="w-4 h-4"></i>
         <span>Emergency Unwind Confirmation</span>
       </div>
-      <p class="text-xs text-[var(--text-muted)] leading-relaxed">Are you sure you want to market-close all active hedged positions across both exchanges immediately? This locks in basis PnL and terminates arbitrage cycles.</p>
+      <p class="text-xs text-ink-mute leading-relaxed">Are you sure you want to market-close all active hedged positions across both exchanges immediately? This locks in basis PnL and terminates arbitrage cycles.</p>
       <div class="grid grid-cols-2 gap-2.5 pt-2">
-        <button onclick="closeModal('modal-unwind-all')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs transition hover:bg-slate-200 dark:hover:bg-slate-800">Cancel</button>
+        <button onclick="closeModal('modal-unwind-all')" class="py-2 rounded-lg bg-elevated text-ink font-medium text-xs transition hover:bg-hover">Cancel</button>
         <button onclick="handleUnwind('ALL')" class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-sm transition active:scale-95">Confirm Unwind All</button>
       </div>
     </div>
   </div>
 
   <!-- Simulate Paper Trade Modal -->
-  <div id="modal-paper-trade" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-pt-title">
-    <div class="surface-card border border-[var(--border-subtle)] rounded-xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
-      <div id="modal-pt-title" class="flex items-center space-x-2 text-emerald-500 font-bold text-sm">
+  <div id="modal-paper-trade" class="fixed inset-0 z-50 bg-scrim backdrop-blur-sm hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-pt-title">
+    <div class="surface-card border border-edge rounded-xl max-w-sm w-full p-5 space-y-3">
+      <div id="modal-pt-title" class="flex items-center space-x-2 text-ink font-bold text-sm">
         <i data-lucide="play-circle" class="w-4 h-4"></i>
         <span>Simulate Open Position</span>
       </div>
       <div class="space-y-2.5 text-xs">
         <div>
-          <label for="modal-pt-symbol" class="block text-[var(--text-muted)] mb-1">Asset Pair</label>
-          <input type="text" id="modal-pt-symbol" readonly class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-2 font-semibold font-num text-[var(--text-primary)]">
+          <label for="modal-pt-symbol" class="block text-ink-mute mb-1">Asset Pair</label>
+          <input type="text" id="modal-pt-symbol" readonly class="w-full bg-elevated border border-edge rounded-lg p-2 font-semibold font-num text-ink">
         </div>
         <div>
-          <label for="modal-pt-margin" class="block text-[var(--text-muted)] mb-1">Margin Size (USD)</label>
-          <input type="number" id="modal-pt-margin" value="50" min="10" step="10" class="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-2 font-num font-semibold text-[var(--text-primary)]">
+          <label for="modal-pt-margin" class="block text-ink-mute mb-1">Margin Size (USD)</label>
+          <input type="number" id="modal-pt-margin" value="50" min="10" step="10" class="w-full bg-elevated border border-edge rounded-lg p-2 font-num font-semibold text-ink">
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5 pt-2">
-        <button onclick="closeModal('modal-paper-trade')" class="py-2 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] font-medium text-xs transition hover:bg-slate-200 dark:hover:bg-slate-800">Cancel</button>
-        <button onclick="executePaperTrade('open')" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-sm transition active:scale-95">Execute Open</button>
+        <button onclick="closeModal('modal-paper-trade')" class="py-2 rounded-lg bg-elevated text-ink font-medium text-xs transition hover:bg-hover">Cancel</button>
+        <button onclick="executePaperTrade('open')" class="py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-xs transition active:scale-95">Execute Open</button>
       </div>
     </div>
   </div>
@@ -647,7 +686,7 @@
   <!-- ========================================================================= -->
   <!-- 5. Modular JavaScript Entrypoint                                          -->
   <!-- ========================================================================= -->
-  <script type="module" src="/js/app.js?v=2.3.0"></script>
+  <script type="module" src="/js/app.js?v=2.4.0"></script>
 
 </body>
 </html>

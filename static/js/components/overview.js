@@ -73,26 +73,26 @@ export function renderHealthAssessment(assessment) {
 
   if (assessment.rebalance_required) {
     if (badge) {
-      badge.className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/25';
+      badge.className = 'px-2 py-0.5 rounded text-2xs font-medium bg-amber-500/10 text-amber-500 border border-amber-500/25';
       badge.innerText = 'Rebalance Advised';
     }
     if (advText) {
       advText.innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-500 inline mr-1"></i><span>${assessment.risk_status || 'Cross-exchange margin transfer recommended.'}</span>`;
     }
     if (healthBadge) {
-      healthBadge.className = 'px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-500 text-[10px] font-semibold border border-amber-500/25';
+      healthBadge.className = 'px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-500 text-2xs font-semibold border border-amber-500/25';
       healthBadge.innerText = 'REBALANCE';
     }
   } else {
     if (badge) {
-      badge.className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/25';
+      badge.className = 'px-2 py-0.5 rounded text-2xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/25';
       badge.innerText = 'Balanced';
     }
     if (advText) {
       advText.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500 inline mr-1"></i><span>${assessment.risk_status || 'Cross-exchange margin allocation is optimal.'}</span>`;
     }
     if (healthBadge) {
-      healthBadge.className = 'px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold border border-emerald-500/25';
+      healthBadge.className = 'px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-500 text-2xs font-semibold border border-emerald-500/25';
       healthBadge.innerText = 'HEALTHY';
     }
   }
@@ -105,8 +105,8 @@ export function renderDashboardTopRadar(opportunities, onOpenTrade) {
   const top5 = (opportunities || []).slice(0, 5);
   if (top5.length === 0) {
     container.innerHTML = `
-      <div class="text-center py-8 text-[var(--text-muted)] text-xs">
-        <i data-lucide="radar" class="w-6 h-6 text-slate-500 mx-auto mb-1 opacity-50"></i>
+      <div class="text-center py-8 text-ink-mute text-xs">
+        <i data-lucide="radar" class="w-6 h-6 text-ink-mute mx-auto mb-1 opacity-50"></i>
         <span>Scanning perpetual markets for spread alpha...</span>
       </div>
     `;
@@ -116,7 +116,7 @@ export function renderDashboardTopRadar(opportunities, onOpenTrade) {
   container.innerHTML = `
     <table class="w-full text-left border-collapse text-xs">
       <thead>
-        <tr class="border-b border-[var(--border-subtle)] text-[var(--text-muted)] text-[11px] font-semibold bg-[var(--bg-elevated)]">
+        <tr class="border-b border-edge text-ink-mute text-2xs font-semibold bg-elevated">
           <th class="py-2.5 px-3">Asset</th>
           <th class="py-2.5 px-2">Mark Price (BN / HL)</th>
           <th class="py-2.5 px-2 text-right">Net Spread (APR)</th>
@@ -125,23 +125,23 @@ export function renderDashboardTopRadar(opportunities, onOpenTrade) {
           <th class="py-2.5 px-3 text-right">Action</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-[var(--border-subtle)] font-num">
+      <tbody class="divide-y divide-edge font-num">
         ${top5.map(o => `
-          <tr class="hover:bg-[var(--table-hover)] transition">
-            <td class="py-2.5 px-3 font-semibold text-[var(--text-primary)]">
+          <tr>
+            <td class="py-2.5 px-3 font-semibold text-ink">
               <span class="inline-flex items-center space-x-1.5">
-                <span class="w-5 h-5 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)] inline-flex items-center justify-center text-[10px] font-bold text-emerald-500">${o.symbol.slice(0, 2)}</span>
+                <span class="w-5 h-5 rounded bg-elevated border border-edge inline-flex items-center justify-center text-2xs font-bold text-ink-soft">${o.symbol.slice(0, 2)}</span>
                 <span>${o.symbol}</span>
               </span>
             </td>
-            <td class="py-2.5 px-2 text-[var(--text-secondary)]">${formatPrice(o.binance_mark_price)} / ${formatPrice(o.hyperliquid_mark_price)}</td>
-            <td class="py-2.5 px-2 text-right font-bold text-emerald-500">${o.net_spread_apr_pct.toFixed(2)}%</td>
-            <td class="py-2.5 px-3 text-center text-[11px]">
-              <span class="px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-medium border border-[var(--border-subtle)]">HL: <b class="${o.hyperliquid_side === 'Short' ? 'text-rose-500' : 'text-emerald-500'}">${o.hyperliquid_side}</b> / BN: <b class="${o.binance_side === 'Short' ? 'text-rose-500' : 'text-emerald-500'}">${o.binance_side}</b></span>
+            <td class="py-2.5 px-2 text-ink-soft">${formatPrice(o.binance_mark_price)} / ${formatPrice(o.hyperliquid_mark_price)}</td>
+            <td class="py-2.5 px-2 text-right font-semibold text-ink">${o.net_spread_apr_pct.toFixed(2)}%</td>
+            <td class="py-2.5 px-3 text-center text-2xs">
+              <span class="px-2 py-0.5 rounded bg-elevated text-ink-soft font-medium border border-edge">HL: <b class="${o.hyperliquid_side === 'Short' ? 'text-rose-500' : 'text-emerald-500'}">${o.hyperliquid_side}</b> / BN: <b class="${o.binance_side === 'Short' ? 'text-rose-500' : 'text-emerald-500'}">${o.binance_side}</b></span>
             </td>
-            <td class="py-2.5 px-2 text-right ${o.projected_1h_net_bps > 0 ? 'text-emerald-500 font-semibold' : 'text-slate-400'}">${o.projected_1h_net_bps > 0 ? '+' : ''}${o.projected_1h_net_bps.toFixed(2)} bps</td>
+            <td class="py-2.5 px-2 text-right ${o.projected_1h_net_bps > 0 ? 'text-emerald-500 font-semibold' : 'text-ink-mute'}">${o.projected_1h_net_bps > 0 ? '+' : ''}${o.projected_1h_net_bps.toFixed(2)} bps</td>
             <td class="py-2.5 px-3 text-right">
-              <button data-symbol="${o.symbol}" class="btn-top-open px-2.5 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/25 text-[11px] transition active:scale-95">
+              <button data-symbol="${o.symbol}" class="btn-top-open px-2.5 py-1 rounded bg-elevated hover:bg-hover text-ink-soft hover:text-ink font-medium border border-edge text-2xs transition active:scale-95">
                 Open
               </button>
             </td>

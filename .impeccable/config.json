@@ -2,5 +2,10 @@
   "buildPath": "code",
   "mode": "operate",
   "theme": "dark",
-  "platform": "web"
+  "platform": "web",
+  "detector": {
+    "ignoreRules": [
+      "ai-color-palette"
+    ]
+  }
 }

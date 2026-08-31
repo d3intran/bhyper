@@ -62,7 +62,7 @@ function updateThemeIcon(isDark) {
   if (btn) {
     btn.innerHTML = isDark 
       ? `<i data-lucide="sun" class="w-3.5 h-3.5 text-amber-400"></i>` 
-      : `<i data-lucide="moon" class="w-3.5 h-3.5 text-slate-400"></i>`;
+      : `<i data-lucide="moon" class="w-3.5 h-3.5 text-ink-mute"></i>`;
   }
 }
 
@@ -83,12 +83,15 @@ export function switchTab(tabId) {
 
   // Desktop Navigation
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]';
+    btn.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 text-ink-mute hover:text-ink border border-transparent';
     btn.setAttribute('aria-selected', 'false');
   });
   const activeNav = document.getElementById(`nav-btn-${tabId}`);
   if (activeNav) {
-    activeNav.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500 text-white shadow-sm';
+    // Tinted rather than filled: six solid emerald pills would blow past the
+    // 10%-accent budget. The border is transparent on inactive tabs so the
+    // selected state does not shift the row by a pixel.
+    activeNav.className = 'tab-btn px-3 py-1.5 rounded-lg font-medium text-xs transition-all flex items-center space-x-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25';
     activeNav.setAttribute('aria-selected', 'true');
   }
 
@@ -96,9 +99,9 @@ export function switchTab(tabId) {
   ['dashboard', 'radar', 'positions', 'config', 'journal', 'about'].forEach(t => {
     const mobBtn = document.getElementById(`mob-btn-${t}`);
     if (mobBtn) {
-      mobBtn.className = t === tabId 
-        ? 'touch-target-min flex flex-col items-center justify-center text-emerald-500 text-[10px] font-medium p-1' 
-        : 'touch-target-min flex flex-col items-center justify-center text-[var(--text-muted)] text-[10px] font-medium p-1';
+      mobBtn.className = t === tabId
+        ? 'touch-target-min flex flex-col items-center justify-center text-emerald-500 text-2xs font-semibold p-1'
+        : 'touch-target-min flex flex-col items-center justify-center text-ink-mute text-2xs font-medium p-1';
       mobBtn.setAttribute('aria-selected', t === tabId ? 'true' : 'false');
     }
   });
@@ -142,7 +145,7 @@ export function initWebSocket() {
       if (ind) ind.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block';
       const st = document.getElementById('status-text');
       if (st) {
-        st.className = 'font-semibold text-emerald-500 text-[10px]';
+        st.className = 'font-semibold text-emerald-500 text-2xs';
         st.innerText = 'WS LIVE';
       }
     };
@@ -161,7 +164,7 @@ export function initWebSocket() {
       if (ind) ind.className = 'w-1.5 h-1.5 rounded-full bg-rose-500 inline-block';
       const st = document.getElementById('status-text');
       if (st) {
-        st.className = 'font-semibold text-rose-500 text-[10px]';
+        st.className = 'font-semibold text-rose-500 text-2xs';
         st.innerText = 'WS RECONNECT';
       }
       reconnectTimeout = setTimeout(initWebSocket, 2500);
@@ -364,12 +367,12 @@ window.handleUnwind = handleUnwind;
 window.setRadarFilter = (f) => {
   appState.radarFilter = f;
   document.querySelectorAll('.rf-btn').forEach(btn => {
-    btn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition active:scale-95';
+    btn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-elevated text-ink-mute hover:text-ink border border-transparent transition active:scale-95';
     btn.setAttribute('aria-pressed', 'false');
   });
   const activeBtn = document.getElementById(`rf-btn-${f}`);
   if (activeBtn) {
-    activeBtn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500 text-white transition active:scale-95';
+    activeBtn.className = 'rf-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 transition active:scale-95';
     activeBtn.setAttribute('aria-pressed', 'true');
   }
   const kw = document.getElementById('radar-search')?.value || '';

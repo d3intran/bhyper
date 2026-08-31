@@ -69,18 +69,21 @@ export function showToast(msg, type = 'info') {
   const isError = type === 'error';
   const isSuccess = type === 'success';
   
-  let bgClass = 'bg-slate-900/95 border-slate-700 text-white';
-  let icon = '<i data-lucide="info" class="w-4 h-4 text-cyan-400"></i>';
+  // Toasts ride an inverse surface so they stay legible over both the Obsidian
+  // and Studio canvases. The accent lives in the icon and the hairline, never
+  // in a tinted fill that would fight the semantic palette.
+  let toneClass = 'border-edge-inverse';
+  let icon = '<i data-lucide="info" class="w-4 h-4 opacity-70"></i>';
 
   if (isError) {
-    bgClass = 'bg-rose-950/95 border-rose-800 text-rose-100';
+    toneClass = 'border-rose-500/40';
     icon = '<i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400"></i>';
   } else if (isSuccess) {
-    bgClass = 'bg-emerald-950/95 border-emerald-800 text-emerald-100';
+    toneClass = 'border-emerald-500/40';
     icon = '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>';
   }
 
-  el.className = `${bgClass} border px-3.5 py-2.5 rounded-lg shadow-xl text-xs font-medium transition-all duration-200 transform translate-y-2 opacity-0 flex items-center space-x-2.5 backdrop-blur-md max-w-sm pointer-events-auto`;
+  el.className = `bg-inverse ${toneClass} text-inverse border px-3.5 py-2.5 rounded-lg shadow-lg text-xs font-medium transition-all duration-200 transform translate-y-2 opacity-0 flex items-center space-x-2.5 max-w-sm pointer-events-auto`;
   el.innerHTML = `<span>${icon}</span><span class="flex-1">${msg}</span>`;
   container.appendChild(el);
 

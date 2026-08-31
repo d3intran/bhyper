@@ -1,211 +1,324 @@
 /* ========================================================================= */
-/* BHyper Impeccable Design System — Institutional Quantitative Terminal     */
-/* Mode: Operate (Ultra-clean, modern, restrained, high-contrast, obsidian)  */
+/* BHyper Terminal — Design Tokens                                           */
+/* Obsidian: a restrained, high-contrast surface system for dense data       */
 /* ========================================================================= */
 
 :root {
-  /* Canvas & Neutral Surface Layers (Light Studio Mode) */
-  --bg-canvas: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f1f5f9;
-  --bg-subtle: #e2e8f0;
-  --bg-hover: #e2e8f0;
-  --bg-active: #cbd5e1;
+  /* ---------------------------------------------------------------- Type */
+  --font-sans: 'IBM Plex Sans', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type ramp — every size in the UI should land on one of these steps */
+  --text-2xs: 0.6875rem;  /* 11px — chips, column heads. The floor; never below. */
+  --text-xs:  0.75rem;    /* 12px — table body */
+  --text-sm:  0.8125rem;  /* 13px — default body for dense UI */
+  --text-base:0.875rem;   /* 14px — section titles */
+  --text-md:  1rem;       /* 16px — page headings */
+  --text-lg:  1.125rem;   /* 18px — panel headlines */
+  --text-2xl: 1.5rem;     /* 24px — KPI hero figures. The ceiling. */
+
+  /* Seven steps is enough for a dense terminal. Anything between these values
+     is drift: pick the nearest step instead of inventing a size. */
+
+  /* -------------------------------------------------------------- Radius */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  /* -------------------------------------------------------------- Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 320ms;
+
+  /* ================================================== LIGHT — Studio ================================================== */
+
+  /* Canvas & Neutral Surface Layers */
+  --bg-canvas:   #fafafb;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f4f5f7;
+  --bg-subtle:   #e9ebef;
+  --bg-hover:    #e9ebef;
+  --bg-active:   #dcdfe5;
 
   /* Borders & Dividers */
-  --border-subtle: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --border-focus: #10b981;
+  --border-subtle: rgba(12, 13, 15, 0.09);
+  --border-strong: rgba(12, 13, 15, 0.16);
+  --border-focus:  #059669;
 
   /* Typography */
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
+  --text-primary:   #0c0d0f;
+  --text-secondary: #4e545e;
+  --text-muted:     #71777f;
 
   /* Translucent Surface Elements */
-  --header-bg: rgba(255, 255, 255, 0.92);
-  --table-hover: #f1f5f9;
-  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --header-bg:    rgba(255, 255, 255, 0.94);
+  --table-hover:  #f4f5f7;
+  --card-shadow:  0 1px 2px rgba(12, 13, 15, 0.04), 0 1px 3px rgba(12, 13, 15, 0.03);
+  --card-shadow-hover: 0 2px 4px rgba(12, 13, 15, 0.06), 0 4px 12px rgba(12, 13, 15, 0.05);
+  --edge-highlight: transparent;
+  --scrim: rgba(12, 13, 15, 0.35);
+
+  /* Inverse surface — toasts and popovers that must float clear of the canvas */
+  --bg-inverse: #101216;
+  --text-inverse: #f7f8f9;
+  --border-inverse: rgba(255, 255, 255, 0.12);
 
   /* Functional Semantic Colors */
-  --accent-carry: #059669;      /* Positive PnL & Emerald Actions */
-  --accent-carry-bg: rgba(5, 150, 105, 0.10);
-  --accent-loss: #e11d48;       /* Negative PnL & Danger */
-  --accent-loss-bg: rgba(225, 29, 72, 0.10);
-  --accent-funding: #0891b2;    /* Hyperliquid & Funding Flows */
-  --accent-funding-bg: rgba(8, 145, 178, 0.10);
-  --accent-binance: #d97706;    /* Binance Accent */
-  --accent-binance-bg: rgba(217, 119, 6, 0.10);
+  --accent-carry:        #059669;
+  --accent-carry-bg:     rgba(5, 150, 105, 0.10);
+  --accent-carry-border: rgba(5, 150, 105, 0.24);
+
+  --accent-loss:         #e11d48;
+  --accent-loss-bg:      rgba(225, 29, 72, 0.10);
+  --accent-loss-border:  rgba(225, 29, 72, 0.24);
+
+  --accent-funding:        #0891b2;
+  --accent-funding-bg:     rgba(8, 145, 178, 0.10);
+  --accent-funding-border: rgba(8, 145, 178, 0.24);
+
+  --accent-binance:        #d97706;
+  --accent-binance-bg:     rgba(217, 119, 6, 0.10);
+  --accent-binance-border: rgba(217, 119, 6, 0.26);
+
   --accent-brand: #059669;
 }
 
+/* ================================================== DARK — Obsidian ================================================== */
+
 html.dark {
-  /* Canvas & Neutral Surface Layers (Dark Mode - Deep Obsidian) */
-  --bg-canvas: #090d16;
-  --bg-surface: #0f172a;
-  --bg-elevated: #162035;
-  --bg-subtle: #1e2d4a;
-  --bg-hover: #1e2d4a;
-  --bg-active: #26395c;
+  /* Canvas & Neutral Surface Layers — a cool near-black, not a blue slate */
+  --bg-canvas:   #0a0b0e;
+  --bg-surface:  #101216;
+  --bg-elevated: #171a1f;
+  --bg-subtle:   #1f232a;
+  --bg-hover:    #1f232a;
+  --bg-active:   #282d36;
 
   /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.15);
-  --border-focus: #10b981;
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --border-focus:  #10b981;
 
   /* Typography */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary:   #f7f8f9;
+  --text-secondary: #a0a7b4;
+  --text-muted:     #6d7480;
 
   /* Translucent Surface Elements */
-  --header-bg: rgba(9, 13, 22, 0.94);
-  --table-hover: rgba(22, 32, 53, 0.7);
-  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.25), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --header-bg:   rgba(10, 11, 14, 0.94);
+  --table-hover: rgba(31, 35, 42, 0.72);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --card-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.36);
+  --edge-highlight: rgba(255, 255, 255, 0.045);
+  --scrim: rgba(0, 0, 0, 0.7);
+
+  /* Inverse surface — lifts clear of the Obsidian canvas rather than sinking into it */
+  --bg-inverse: #1f232a;
+  --text-inverse: #f7f8f9;
+  --border-inverse: rgba(255, 255, 255, 0.12);
 
   /* Functional Semantic Colors */
-  --accent-carry: #10b981;      /* Positive PnL & Emerald Actions */
-  --accent-carry-bg: rgba(16, 185, 129, 0.12);
-  --accent-loss: #f43f5e;       /* Negative PnL & Danger */
-  --accent-loss-bg: rgba(244, 63, 94, 0.12);
-  --accent-funding: #06b6d4;    /* Hyperliquid & Funding Flows */
-  --accent-funding-bg: rgba(6, 182, 212, 0.12);
-  --accent-binance: #f59e0b;    /* Binance Accent */
-  --accent-binance-bg: rgba(245, 158, 11, 0.12);
+  --accent-carry:        #10b981;
+  --accent-carry-bg:     rgba(16, 185, 129, 0.12);
+  --accent-carry-border: rgba(16, 185, 129, 0.28);
+
+  --accent-loss:         #f43f5e;
+  --accent-loss-bg:      rgba(244, 63, 94, 0.12);
+  --accent-loss-border:  rgba(244, 63, 94, 0.28);
+
+  --accent-funding:        #06b6d4;
+  --accent-funding-bg:     rgba(6, 182, 212, 0.12);
+  --accent-funding-border: rgba(6, 182, 212, 0.28);
+
+  --accent-binance:        #f59e0b;
+  --accent-binance-bg:     rgba(245, 158, 11, 0.12);
+  --accent-binance-border: rgba(245, 158, 11, 0.30);
+
   --accent-brand: #10b981;
 }
 
-/* Base Body Styling */
+/* ==================================================== Base ==================================================== */
+
 body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
-  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  letter-spacing: -0.012em;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transition: background-color var(--dur-base) var(--ease-in-out),
+              color var(--dur-base) var(--ease-in-out);
   -webkit-tap-highlight-color: transparent;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* High-Precision Tabular Numbers for Zero Layout Shift */
-.font-num {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-feature-settings: "tnum" 1, "zero" 1;
-  font-variant-numeric: tabular-nums;
+/* The type ramp itself is registered in tailwind.config (see index.html) so the
+   `text-2xs` … `text-2xl` utilities come from Tailwind and stay single-sourced. */
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-/* Custom Text Selection */
+/* High-precision tabular numbers — zero layout shift as values tick */
+.font-num {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 ::selection {
-  background: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.26);
   color: inherit;
 }
 
-/* Minimalist Native-Grade Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Custom scrollbar — thin, unobtrusive, appears on use */
+.custom-scrollbar { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 9999px;
+  transition: background var(--dur-fast) var(--ease-in-out);
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* Professional Surface Cards */
+/* ==================================================== Surfaces ==================================================== */
+
+/* Elevation is a hairline top highlight + a soft cast shadow.
+   The highlight is what makes dark surfaces read as physical planes. */
 .surface-card {
+  position: relative;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.75rem;
-  box-shadow: var(--card-shadow);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow), inset 0 1px 0 var(--edge-highlight);
+  transition: border-color var(--dur-base) var(--ease-out),
+              background-color var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
+}
+.surface-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--card-shadow-hover), inset 0 1px 0 var(--edge-highlight);
 }
 
-/* Interactive Component States & Keyboard Focus */
+/* Flush panel for tables and dense lists — no shadow, just an edge */
+.panel {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
+  overflow: hidden;
+}
+
+/* Hero banner — a single-hue wash bleeding from the top-left corner. Carries the
+   accent without the thick coloured left bar that reads as generated boilerplate. */
+.hero-card { position: relative; overflow: hidden; }
+.hero-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 150% at 0% 0%, var(--accent-carry-bg) 0%, transparent 58%);
+  pointer-events: none;
+}
+.hero-card > * { position: relative; }
+
+/* ==================================================== Focus ==================================================== */
+
 input, select, textarea {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--border-focus) !important;
-  outline: 2px solid rgba(16, 185, 129, 0.3);
-  outline-offset: 0;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16);
 }
-
-button:focus-visible, a:focus-visible {
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
-/* Live WebSocket Pulse Dot */
+/* ==================================================== Live indicator ==================================================== */
+
 .pulse-dot {
   box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
-  animation: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: pulse-ring 2.4s var(--ease-in-out) infinite;
 }
 @keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
-/* Skeleton Loading Shimmer */
+/* ==================================================== Skeleton ==================================================== */
+
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0.03) 100%
+    var(--bg-elevated) 0%,
+    var(--bg-subtle) 50%,
+    var(--bg-elevated) 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-loading 1.5s infinite ease-in-out;
-  border-radius: 4px;
-}
-.dark .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.09) 50%,
-    rgba(255, 255, 255, 0.03) 100%
-  );
-  background-size: 200% 100%;
+  animation: skeleton-loading 1.6s var(--ease-in-out) infinite;
+  border-radius: var(--radius-sm);
 }
 @keyframes skeleton-loading {
-  0% { background-position: 200% 0; }
+  0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* Status Chips & Badges */
+/* ==================================================== Chips ==================================================== */
+
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.3125rem;
   padding: 0.125rem 0.5rem;
-  border-radius: 0.375rem;
-  font-size: 0.6875rem;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-2xs);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 .chip-emerald {
   background-color: var(--accent-carry-bg);
   color: var(--accent-carry);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  border: 1px solid var(--accent-carry-border);
 }
 .chip-cyan {
   background-color: var(--accent-funding-bg);
   color: var(--accent-funding);
-  border: 1px solid rgba(6, 182, 212, 0.25);
+  border: 1px solid var(--accent-funding-border);
 }
 .chip-amber {
   background-color: var(--accent-binance-bg);
   color: var(--accent-binance);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  border: 1px solid var(--accent-binance-border);
 }
 .chip-rose {
   background-color: var(--accent-loss-bg);
   color: var(--accent-loss);
-  border: 1px solid rgba(244, 63, 94, 0.25);
+  border: 1px solid var(--accent-loss-border);
 }
 .chip-neutral {
   background-color: var(--bg-elevated);
@@ -213,25 +326,31 @@ button:focus-visible, a:focus-visible {
   border: 1px solid var(--border-subtle);
 }
 
-/* Segmented Control Buttons */
+/* ==================================================== Tabs ==================================================== */
+
 .tab-btn {
   position: relative;
   font-weight: 500;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
 }
-.tab-btn:active {
-  transform: scale(0.98);
+.tab-btn:active { transform: scale(0.98); }
+
+tbody tr { transition: background-color var(--dur-fast) var(--ease-out); }
+tbody tr:hover { background-color: var(--table-hover); }
+
+/* Section label — the small caps marker used above data groups */
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-/* Smooth Table Transition */
-tbody tr {
-  transition: background-color 0.12s ease;
-}
+/* ==================================================== Mobile ==================================================== */
 
-/* Telegram Mini App Touch Target Optimization */
 @media (max-width: 768px) {
-  .touch-target-min {
-    min-height: 44px;
-    min-width: 44px;
-  }
+  .touch-target-min { min-height: 44px; min-width: 44px; }
 }
